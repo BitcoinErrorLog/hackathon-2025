@@ -1,190 +1,277 @@
-# Pubky Internal Hackathon Lugano 2025
+# Graphiti - Pubky URL Tagger
 
-<img width="1536" height="1024" alt="ChatGPT Image Oct 9, 2025, 01_44_28 PM" src="https://github.com/user-attachments/assets/73777d5a-d277-45e0-a020-3d8e1dcc2f52" />
+A Chrome Manifest V3 extension that lets you publish deterministic link posts with tags to your Pubky homeserver, browse what your follows have shared about the current page, and keep quick local bookmarks.
 
----
+## Features
 
-This repository contains the project submissions for the Lugano Plan B Pubky Hackathon.
+### 🔐 QR-only Pubky Ring Authentication
+- Initiate the Ring flow from the Sign-in button
+- Scan the QR code on mobile to sign in
+- Create a session with your homeserver
 
-**Purpose:** stress-test **Pubky Core (SDK)** by building real, runnable outputs. Expose friction, validate design assumptions, and ship usable demos.
+### 📱 Sidebar Feed
+- Display a chronological sidebar feed
+- See all Pubky App posts containing the current URL
+- From users you follow
 
----
+### ⭐ Bookmarks
+- Bookmark the current URL
+- Uses Pubky App schema
+- Stored on your homeserver
 
-## Repository Workflow
+### 🏷️ Tagging Support
+- Pubky App specs-compatible tagging
+- Tag any URL with custom labels
+- Discoverable by your network
 
-Repository: `pubky/hackathon-2025`
+### 🔧 Debug Features
+- Comprehensive error logging
+- Export logs for troubleshooting
+- Real-time log viewer in popup
 
-1. **Fork** the repository.
-2. **Clone** your fork locally.
-3. **Create a subfolder** at repo root for your project:
+## Installation
 
-   - Use team or individual name, **no spaces**. Prefer `kebab-case` .
-   - Example: `super-team/` or `jane-doe/`.
-   - If you want your project to be a stand alone repository. Feel free commit it here as a [gitsubmodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
+### Prerequisites
+- Node.js 18+ and npm
+- Chrome/Chromium browser
+- Pubky Ring mobile app (for authentication)
 
-4. Build **only inside your subfolder**.
-5. Include **README.md**, **MIT LICENSE**, and all required assets to build/run.
-6. Open a **Pull Request** from your fork to the main repo when done.
+### Setup
 
-Suggested Git hygiene:
-
-- One PR per project folder.
-- No history rewriting after presentations begin.
-- Keep PR scope to your folder.
-
----
-
-## Timeline
-
-| Phase                                                                                                                           | Date      |      Time | Activity                     | Notes                                   |
-| ------------------------------------------------------------------------------------------------------------------------------- | --------- | --------: | ---------------------------- | --------------------------------------- |
-| Pre-event Prep                                                                                                                  | Oct 6–13  |         - | Post ideas on Slack          | Gather minimal feedback; cut weak ideas |
-| [Team Formation (sheet)](https://docs.google.com/spreadsheets/d/1IoFbuMGijKnR_AJBmAQMJcJATSQyvZFYg41YoCFDdJM/edit?gid=0#gid=0)  | Oct 6–13  |         - | Announce teams (pairs ideal) | Teams confirmed before travel           |
-| Kickoff                                                                                                                         | Oct 21    |       1 h | Overview                     | Goals, tools, scoring, prizes           |
-| Day 1                                                                                                                           | Oct 22    |    ~6–8 h | Build session                | Breaks as needed                        |
-| Day 2 (AM)                                                                                                                      | Oct 23    | 30–45 min | Quick team updates           | Progress, pivots, blockers              |
-| Day 2                                                                                                                           | Oct 23    |    ~6–8 h | Build session                | -                                       |
-| Day 2 (PM)                                                                                                                      | Oct 23    |   1–1.5 h | Final presentations          | Show deliverables                       |
-| Day 2 (PM)                                                                                                                      | Oct 23    |      ~1 h | Voting + prizes              | Popular vote, scoring, awards           |
-| Plan B (if needed)                                                                                                              | Oct 24 AM |     0.5 h | Announce winners             | Only if delayed                         |
-
-During the broader meetup/conference you may continue polishing, documenting, or hardening. Key demos may be promoted to roadmap items and require a proper wrap-up.
-
----
-
-## Deliverables Checklist
-
-- **Runnable demo**: live website (e.g. github page), desktop binary, CLI, APK, or equivalent.
-- **Source code** under your subfolder with reproducible build steps.
-- **README.md**: what it does, why it matters, setup/run steps, architecture sketch.
-- **Feedback form (mandatory)**: frictions, surprises, failures, misunderstandings, and time-wasters. [Feedback form here.](https://forms.gle/yCm461GeRpZMLCdZ8)
-- **License**: `MIT` file in your subfolder.
-- **Presentation** (2–3 min outcome, +2–3 min architecture if useful).
-- **PR** to the main repo from your fork. Do not commit tokens or secrets!
-
----
-
-## Pubky SDK: Setup and Test Paths
-
-Primary materials:
-
-Rust:
-
-- Crate: https://crates.io/crates/pubky/0.6.0-rc.6
-- Docs: https://docs.rs/pubky/0.6.0-rc.6/pubky/index.html
-- Examples: https://github.com/pubky/pubky-core/tree/main/examples/rust
-
-Javascript:
-
-- NPM package: https://www.npmjs.com/package/@synonymdev/pubky/v/0.6.0-rc.6
-- Examples: https://github.com/pubky/pubky-core/tree/main/examples/javascript
-
-Two kind of development environments:
-
-### 1) Local Testnet (offline)
-
-**Rust**
-
-You can embed an ephimeral testnet using the `pubky-testnet` crate for full local development.
-
-```sh
-cargo add pubky-testnet@=0.6.0-rc.1
-```
-
-Check out [examples/testnet](https://github.com/pubky/pubky-core/tree/main/examples/rust/1-testnet) to learn how to create from a tiny app performing signup/put/get against an ephemeral local testnet.
-
-You can also run it as a separate process by:
-
-```sh
-cargo install pubky-testnet
-pubky-testnet
-
-# then instantiate the sdk facade with Pubky::testnet()
-```
-
-**Javascript**
-
-Run a local testnet:
-
+1. **Install dependencies:**
 ```bash
-# Requires the rust toolchain. Install with:
-# curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-cargo install pubky-testnet
-pubky-testnet
+npm install
 ```
 
-Just make sure you always instantiate the testnet version of the SDK by
-
-```js
-const pubky = Pubky.testnet();
+2. **Build the extension:**
+```bash
+npm run build
 ```
 
-Check out [examples/testnet](https://github.com/pubky/pubky-core/blob/refactor/breaking-pubky-client/examples/javascript/1-testnet.mjs) to learn how to create from a tiny app performing signup/put/get the local testnet.
+3. **Load in Chrome:**
+   - Open Chrome and go to `chrome://extensions/`
+   - Enable "Developer mode" (toggle in top right)
+   - Click "Load unpacked"
+   - Select the `dist` folder from this project
 
-### 2) Staging Homeserver (shared)
+### Development
 
-- Staging homeserver public key: `ufibwbmed6jeq9k4p583go95wofakh9fwpp4k734trq79pd9u1uy`
-
-- Staging homeserver requires invitation codes to create users. You can generate invitation codes by running:
-
-```sh
-curl -X GET \
-"https://admin.homeserver.staging.pubky.app/generate_signup_token" \
-  -H "X-Admin-Password: voyage tuition cabin arm stock guitar soon salute"
+To build and watch for changes:
+```bash
+npm run dev
 ```
 
----
+Then reload the extension in Chrome after changes.
 
-## Rules
+## Usage
 
-- Use **Pubky SDK** for Pubky-supported features.
-- Collaborate in person during build days.
-- One project per team; teams ideally of two.
-- No self-voting. Violations mean disqualification.
+### First Time Setup
 
----
+1. **Click the extension icon** in your Chrome toolbar
+2. **Click "Sign In with Pubky Ring"**
+3. **Scan the QR code** with your Pubky Ring mobile app
+4. **Approve the authentication** on your mobile device
+5. **Wait for the session** to be established
 
-## Scoring
+### Bookmarking
 
-| Criteria                  | Description                                                                       |      Weight |
-| ------------------------- | --------------------------------------------------------------------------------- | ----------: |
-| Complexity                | Original, extensive, or technically deep use of Pubky to achieve goals            |         15% |
-| Creativity / Practicality | Goes beyond “Hello World”; novel and broadly useful                               |         15% |
-| Readiness                 | Boolean. Live, interactive demo usable without cloning                            |         10% |
-| Team Presentation         | ~5 min: what, why, learnings, Pubky’s role                                        |         15% |
-| Feedback                  | Clear documentation of process and friction points                                |         15% |
-| Popular Vote              | Participants vote; self-vote = disqualification                                   |         15% |
-| AI Vote                   | Average of ChatGPT and Claude to: `Rate this project from 0 to 10 {all codebase}` |         15% |
-| Boss’ Vote                | John’s personal vote                                                              | Tie-breaker |
+1. Navigate to any webpage
+2. Click the extension icon
+3. Click "Bookmark This Page"
+4. The bookmark will be saved to your homeserver
 
-Total weighted points = 100. Tie resolved by Boss’ vote.
+### Tagging
 
----
+1. Navigate to any webpage
+2. Click the extension icon
+3. Enter tags in the input field (comma or space separated)
+4. Click "Add Tags"
+5. Tags will be published to your homeserver
 
-## Prizes
+### Viewing Feed
 
-- **1st**: Amazon vouchers **$500** split across team + **Pubky Champion** title + Pubky Crown
-- **2nd**: Amazon vouchers **$300** split across team
-- **3rd**: Amazon vouchers **$200** split across team
-- **Most Innovative Project**: Amazon vouchers **$100** split across team
+1. Navigate to any webpage
+2. Click the extension icon
+3. Click "View Feed for This URL"
+4. The side panel will open showing posts from your network about this page
 
----
+### Debugging
 
-## Security and Hygiene
+1. Click the "🔧 Debug" button in the popup header
+2. View real-time logs of all extension activity
+3. Filter logs by level (DEBUG, INFO, WARN, ERROR)
+4. Export logs to JSON for troubleshooting
+5. Clear logs when needed
 
-- Do not commit secrets, tokens, or private packages.
-- Verify `.gitignore` before first commit. Use `git status` to confirm no sensitive files are tracked.
-- Keep dependencies minimal and documented.
-- Provide deterministic build steps.
+## Architecture
 
----
+### File Structure
+```
+pubky-extension-test/
+├── manifest.json           # Chrome extension manifest
+├── package.json           # Node dependencies
+├── vite.config.ts         # Vite build configuration
+├── tailwind.config.js     # Tailwind CSS configuration
+├── src/
+│   ├── background/        # Background service worker
+│   │   └── background.ts
+│   ├── popup/            # Extension popup
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   └── components/
+│   │       ├── AuthView.tsx      # QR code authentication
+│   │       ├── MainView.tsx      # Main popup interface
+│   │       └── DebugPanel.tsx    # Debug log viewer
+│   ├── sidepanel/        # Side panel feed
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   └── components/
+│   │       ├── PostCard.tsx      # Post display component
+│   │       └── EmptyState.tsx    # Empty state UI
+│   ├── utils/            # Utility modules
+│   │   ├── auth.ts       # Authentication logic
+│   │   ├── crypto.ts     # Cryptographic utilities
+│   │   ├── logger.ts     # Debug logging system
+│   │   ├── storage.ts    # Chrome storage wrapper
+│   │   └── pubky-api.ts  # Pubky API client
+│   └── styles/
+│       └── globals.css   # Global styles with Tailwind
+├── icons/                # Extension icons
+└── dist/                 # Build output (generated)
+```
 
-## Presentation
+### Key Technologies
+- **React 18** - UI framework
+- **TypeScript** - Type safety
+- **Tailwind CSS** - Styling
+- **Vite** - Build tool
+- **Chrome Extension APIs** - Browser integration
+- **Pubky Protocol** - Decentralized authentication and storage
 
-- ~5 minutes per team.
-- Show the live demo first, then architecture and key Pubky flows.
-- Highlight frictions and proposed fixes if any.
+## Pubky Integration
 
----
+### Authentication Flow
+1. Generate client secret (32 random bytes)
+2. Calculate channel ID by hashing the secret
+3. Create `pubkyauth://` URL with relay and capabilities
+4. Display QR code for scanning
+5. Poll HTTP relay for encrypted auth token
+6. Decrypt token with client secret
+7. Parse token to extract pubky and capabilities
+8. Create session with homeserver
 
-Happy hacking!
+### Data Models
+
+#### Bookmark
+```typescript
+{
+  uri: string,        // URL being bookmarked
+  created_at: number  // Unix timestamp
+}
+```
+
+#### Tag
+```typescript
+{
+  uri: string,        // URL being tagged
+  label: string,      // Tag label (lowercase, max 20 chars)
+  created_at: number  // Unix timestamp
+}
+```
+
+#### Post (Link)
+```typescript
+{
+  content: string,           // Post content
+  kind: 'link',             // Post type
+  parent: null,             // For replies
+  embed: null,              // For reposts
+  attachments: [string]     // URLs
+}
+```
+
+## Troubleshooting
+
+### Extension Not Loading
+- Make sure you ran `npm run build`
+- Check that you selected the `dist` folder in Chrome
+- Look for errors in `chrome://extensions/` page
+
+### Authentication Not Working
+- Ensure you have the Pubky Ring mobile app installed
+- Check network connectivity
+- Open debug panel to see detailed logs
+- Try generating a new QR code
+
+### Posts Not Showing in Feed
+- Verify you're signed in
+- Check that you're following users who have posted about the URL
+- Note: Demo implementation may not connect to real Nexus API
+
+### Debug Logs
+All extension activity is logged. To view:
+1. Open the extension popup
+2. Click "🔧 Debug" button
+3. Filter and export logs as needed
+
+Common log contexts:
+- `Auth` - Authentication flow
+- `Storage` - Data persistence
+- `PubkyAPI` - API interactions
+- `Crypto` - Cryptographic operations
+- `App` - UI component lifecycle
+
+## Development Notes
+
+### Build Process
+- Vite compiles TypeScript and React
+- Tailwind processes CSS
+- Output goes to `dist/` folder
+- Manifest and icons are copied automatically
+
+### Testing Changes
+1. Make code changes
+2. Run `npm run dev` (auto-rebuilds on changes)
+3. Go to `chrome://extensions/`
+4. Click reload icon on the extension
+5. Test your changes
+
+### Adding Features
+- New UI components: `src/popup/components/` or `src/sidepanel/components/`
+- New utilities: `src/utils/`
+- API changes: `src/utils/pubky-api.ts`
+- Authentication changes: `src/utils/auth.ts`
+
+## Known Limitations
+
+1. **Demo Homeserver**: Currently uses placeholder homeserver URLs
+2. **Nexus API**: Not fully integrated with production Nexus API
+3. **DHT Lookup**: Homeserver resolution uses placeholder logic
+4. **Session Management**: Sessions don't persist across browser restarts (by design for security)
+
+## Future Enhancements
+
+- [ ] Real Nexus API integration
+- [ ] DHT-based homeserver resolution
+- [ ] Post creation with link posts
+- [ ] Rich post preview
+- [ ] Notification system
+- [ ] Export/import bookmarks and tags
+- [ ] Search and filter capabilities
+- [ ] Multiple account support
+
+## License
+
+MIT
+
+## Contributing
+
+Contributions welcome! Please open an issue or PR.
+
+## Support
+
+For issues or questions:
+1. Check the debug logs first
+2. Export logs and include them in bug reports
+3. Open an issue with detailed reproduction steps
+
