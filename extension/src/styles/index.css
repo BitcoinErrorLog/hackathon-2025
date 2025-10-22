@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark light;
+}
+
+body {
+  font-family: theme('fontFamily.sans');
+  background-color: #0b1021;
+  color: theme('colors.franky.sand');
+  transition: background-color 300ms ease, color 300ms ease;
+}
+
+body[data-theme='light'] {
+  background-color: theme('colors.franky.sand');
+  color: theme('colors.franky.ink');
+  color-scheme: light dark;
+}
+
+.graphiti-surface {
+  backdrop-filter: blur(12px);
+}
+
+.graphiti-panel {
+  backdrop-filter: blur(6px);
+}
+
+body[data-theme='light'] .graphiti-panel {
+  background-color: rgba(255, 255, 255, 0.8);
+  color: theme('colors.franky.ink');
+  border-color: rgba(11, 16, 33, 0.1);
+  box-shadow: 0 12px 28px rgba(11, 16, 33, 0.12);
+}
+
+body[data-theme='light'] .graphiti-surface {
+  color: theme('colors.franky.ink');
+}
+
+.glow-border {
+  box-shadow: inset 0 0 0 1px theme('colors.franky.sky'), 0 0 24px rgba(0, 224, 255, 0.45);
+}
+
+@keyframes neonPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(0, 224, 255, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(255, 58, 124, 0.35);
+  }
+}
+
+.hover\:shadow-glow:hover {
+  animation: neonPulse 900ms ease-in-out infinite;
+}
