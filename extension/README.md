@@ -1,32 +1,48 @@
-# Graphiti — Stage 3 Polish & Resilience
+# Graphiti — Pubky URL Tagger
 
-Stage 3 adds Franky-flavoured finesse and real-world resiliency to Graphiti. The extension now adapts to the user’s system theme, highlights state with playful neon micro-interactions, and gracefully handles flaky connectivity by queueing publishes for later. Feed views react to homeserver hiccups, letting you keep browsing cached context while Graphiti retries uploads in the background.
+Graphiti is a Manifest V3 Chrome extension that lets you publish tagged link posts to your Pubky homeserver, review what your follows have shared about the current page, and keep Franky-flavoured local bookmarks. The codebase now ships as plain JavaScript/HTML/CSS so you can load the folder straight into Chrome without a build step.
 
-## Scripts
+## Loading the extension
 
-- `npm run dev` – Start Vite in development mode with HMR for the popup, side panel, and service worker.
-- `npm run build` – Type-check and generate the production-ready extension bundle inside `dist/` for "Load unpacked".
-- `npm run preview` – Preview the built extension locally.
+1. Clone or download this repository.
+2. Open `chrome://extensions` in Chrome and enable **Developer mode**.
+3. Click **Load unpacked** and choose the `extension/` directory from this repo.
+4. Pin Graphiti from the toolbar to access the popup and open the side panel from the extensions menu.
 
-## Stage 3 highlights
+## Feature tour
 
-- **Adaptive Franky theming** – Popup and side panel automatically match the user’s light/dark preference, applying blurred Franky panels, animated neon hover states, and new typography polish.
-- **Offline-first publishing** – Link posts that fail to reach the homeserver land in a pending queue with retry/dismiss controls. Graphiti retries automatically via background alarms when connectivity returns.
-- **Status-aware feed** – Sidebar surfaces connection state, pending publish counts, and cached-feed messaging so users understand what they’re seeing even when offline or signed out.
-- **Homeserver resilience** – Background worker now retries Pubky API calls with exponential backoff, broadcasts status snapshots, and falls back to cached data when the homeserver is slow or unreachable.
-- **Queued telemetry** – Publish retries, feed refreshes, and tag history updates update a shared status snapshot so both surfaces stay in sync without reloading.
+### QR-only Ring authentication
+- Press **Sign in** in the popup to request a Ring session from your configured homeserver.
+- Scan the QR code using the Pubky mobile app to approve the session. The popup updates in real time as the session transitions from `pending` to `authenticated`.
+- Use **Sign out** (same button) to end the session at any time.
 
-## Quick start
+### Franky-styled publishing & tagging
+- The popup auto-loads metadata about the active tab (title, canonical URL, Open Graph details).
+- Add comma-separated tags; Graphiti normalises them into Pubky App-compatible slugs.
+- Publish sends a deterministic record to the homeserver. Failures are queued offline and retried automatically via the background service worker.
 
-1. Install dependencies locally (`npm install` from `extension/`).
-2. During development run `npm run dev` for live reload across popup, side panel, and service worker.
-3. For packaging run `npm run build`; load the resulting `dist/` folder as an unpacked Chrome extension.
-4. Drop your own PNG icons inside `extension/public/` before zipping for distribution (the repo keeps only text placeholders to avoid binary diffs).
+### Sidebar feed for follows
+- The side panel refreshes whenever the active tab changes or when you press **Refresh**.
+- It fetches link posts about the current URL from the people you follow, displaying comments, timestamps, and tags.
+- Status badges show the last refresh time, current authentication state, and any homeserver errors.
 
-## Usage notes
+### Local bookmarks & queue management
+- Save the active page as a local bookmark directly from the popup. Bookmarks sync via Chrome Sync storage and can be opened or removed later.
+- Pending publishes appear in both the popup and sidebar, with a manual **Retry queue** button.
 
-- Start the Pubky Ring flow from the popup. Once authenticated the side panel automatically requests and displays the feed for the current tab.
-- Tags must be lowercase slugs; the editor normalises input and surfaces recent history from previous posts or bookmarks.
-- Bookmarks live entirely in Chrome sync storage and never hit the Pubky homeserver. Use them as a quick local queue alongside published posts.
-- Homeserver changes propagate immediately to the Pubky client and future API calls; you can switch environments without reloading the extension.
-- If you go offline, publishes are saved in the pending queue and will auto-sync (or can be manually retried) once you’re back online.
+## Customising homeserver & storage
+- The homeserver input in the popup persists to Chrome storage and drives all future API calls.
+- All persistent state (session snapshot, tag history, pending queue, status metadata) lives under the `graphiti.*` keys inside Chrome storage. Bookmarks use Chrome sync storage so they roam with your browser profile.
+
+## Development notes
+- The extension uses only standard Web APIs, so no bundler or npm install is required.
+- If you want to tweak styling, edit `styles/franky.css` and the surface-specific CSS in `popup/` or `sidepanel/`.
+- The background worker lives at `background/service-worker.js` and handles Pubky requests, storage, and retry logic.
+- API endpoints target the v1 Pubky routes (`/ring/v1`, `/graph/v1`, `/apps/link-posts`). Adjust them if your homeserver exposes different paths.
+
+## Known limitations
+- This implementation uses best-effort Pubky endpoints; verify them against your homeserver’s API and adjust if necessary.
+- The extension relies on the browser fetching the QR image data directly from the homeserver. Ensure CORS allows the request.
+- Feed rendering expects each record to surface `tags`, `comment`, `title`, `createdAt`, and `author` fields. If your homeserver uses different keys, extend the mapping in `sidepanel/sidepanel.js`.
+
+Enjoy tagging the web with Franky flair!
