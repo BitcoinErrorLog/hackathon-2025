@@ -364,13 +364,15 @@ class PubkyAPISDK {
       const urlHashTag = await generateUrlHashTag(url);
       logger.info('PubkyAPISDK', 'Searching by URL hash tag', { urlHashTag });
       
-      // Search posts by the URL hash tag
-      const posts = await nexusClient.searchPostsByTag(urlHashTag, {
+      // Use streamPosts with tags filter instead of searchPostsByTag
+      const response = await nexusClient.streamPosts({
+        tags: urlHashTag,
         observer_id: viewerId,
         limit: 50,
         sorting: 'latest'
       });
       
+      const posts = response.data || [];
       logger.info('PubkyAPISDK', 'Found posts with URL hash tag', { count: posts.length });
       return posts;
     } catch (error) {
