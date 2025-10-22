@@ -76,19 +76,29 @@ class PubkyAPISDK {
       await this.ensurePubky();
       
       try {
-        await this.pubky.fetch(fullPath, {
+        const response = await this.pubky.fetch(fullPath, {
           method: 'PUT',
           body: JSON.stringify(bookmark),
           credentials: 'include',
         });
         
-        logger.info('PubkyAPISDK', 'Bookmark written to homeserver', { 
+        logger.info('PubkyAPISDK', 'Bookmark write response', { 
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok,
           path: fullPath,
           id: bookmarkId,
           data: bookmark 
         });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        logger.info('PubkyAPISDK', 'Bookmark written to homeserver successfully');
       } catch (writeError) {
-        logger.warn('PubkyAPISDK', 'Failed to write to homeserver, saving locally only', writeError as Error);
+        logger.error('PubkyAPISDK', 'Failed to write to homeserver', writeError as Error);
+        throw writeError;
       }
       
       return { fullPath, bookmarkId };
