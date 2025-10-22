@@ -109,13 +109,13 @@ class AuthManagerSDK {
     try {
       logger.info('AuthSDK', 'Waiting for user approval');
 
-      // Wait for the response - this returns a Session object!
-      const sdkSession = await authRequest.response();
+      // Wait for the response (PublicKey)
+      const publicKey = await authRequest.response();
 
       logger.info('AuthSDK', 'Authentication successful!');
 
-      // Get the pubky ID from the session
-      const pubkyId = sdkSession.pubky();
+      // Extract the z32 encoded public key
+      const pubkyId = publicKey.z32();
       
       // Create our session format
       const session: Session = {
@@ -126,8 +126,8 @@ class AuthManagerSDK {
         timestamp: Date.now(),
       };
 
-      // Store the SDK session for making authenticated requests
-      await this.storeSessionData(sdkSession);
+      // Store session data
+      await this.storeSessionData(publicKey);
 
       // Save session to storage
       await storage.saveSession(session);
@@ -143,16 +143,14 @@ class AuthManagerSDK {
   /**
    * Store session data for later use
    */
-  private async storeSessionData(sdkSession: any): Promise<void> {
+  private async storeSessionData(publicKey: any): Promise<void> {
     try {
-      // Store the SDK session object
-      // Note: The SDK session contains authentication state/cookies
-      await storage.setSetting('sdkSession', {
+      // Store minimal session data
+      await storage.setSetting('sessionData', {
         timestamp: Date.now(),
-        pubky: sdkSession.pubky(),
-        capabilities: sdkSession.capabilities(),
+        pubkeyZ32: publicKey.z32(),
       });
-      logger.debug('AuthSDK', 'SDK session data stored');
+      logger.debug('AuthSDK', 'Session data stored');
     } catch (error) {
       logger.error('AuthSDK', 'Failed to store session data', error as Error);
     }
@@ -211,37 +209,14 @@ class AuthManagerSDK {
    */
   async signOut(): Promise<void> {
     try {
-      // Sign out from SDK if client exists
-      if (this.client) {
-        try {
-          await this.client.signout();
-        } catch (err) {
-          logger.warn('AuthSDK', 'Failed to sign out from SDK', err as Error);
-        }
-      }
-      
       await storage.clearSession();
-      await storage.setSetting('sdkSession', null);
+      await storage.setSetting('sessionData', null);
       this.currentAuthRequest = null;
       logger.info('AuthSDK', 'User signed out');
     } catch (error) {
       logger.error('AuthSDK', 'Failed to sign out', error as Error);
       throw error;
     }
-  }
-
-  /**
-   * Get the authenticated client for making requests
-   */
-  async getAuthenticatedClient(): Promise<Client> {
-    const client = await this.ensureClient();
-    const session = await storage.getSession();
-    
-    if (!session) {
-      throw new Error('No active session - user must be authenticated');
-    }
-    
-    return client;
   }
 }
 
