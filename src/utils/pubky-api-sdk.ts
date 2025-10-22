@@ -2,6 +2,7 @@ import { logger } from './logger';
 import { storage } from './storage';
 import { nexusClient, NexusPost } from './nexus-client';
 import { PubkySpecsBuilder, PubkyAppPostKind } from 'pubky-app-specs';
+import { authManagerSDK } from './auth-sdk';
 
 /**
  * Pubky API using official SDK for homeserver operations
@@ -9,11 +10,8 @@ import { PubkySpecsBuilder, PubkyAppPostKind } from 'pubky-app-specs';
 
 class PubkyAPISDK {
   private static instance: PubkyAPISDK;
-  private pubky: any = null;
 
-  private constructor() {
-    this.initializePubky();
-  }
+  private constructor() {}
 
   static getInstance(): PubkyAPISDK {
     if (!PubkyAPISDK.instance) {
@@ -23,26 +21,11 @@ class PubkyAPISDK {
   }
 
   /**
-   * Initialize Pubky client
+   * Get authenticated client for making requests
+   * This returns the same client instance that was used for auth
    */
-  private async initializePubky() {
-    try {
-      const { Client } = await import('@synonymdev/pubky');
-      this.pubky = new Client();
-      logger.info('PubkyAPISDK', 'Pubky Client initialized');
-    } catch (error) {
-      logger.error('PubkyAPISDK', 'Failed to initialize Pubky Client', error as Error);
-    }
-  }
-
-  /**
-   * Ensure Pubky is initialized
-   */
-  private async ensurePubky(): Promise<any> {
-    if (!this.pubky) {
-      await this.initializePubky();
-    }
-    return this.pubky;
+  private async getAuthenticatedClient(): Promise<any> {
+    return await authManagerSDK.getAuthenticatedClient();
   }
 
   /**
@@ -62,6 +45,8 @@ class PubkyAPISDK {
   async createBookmark(url: string): Promise<{ fullPath: string; bookmarkId: string }> {
     try {
       const session = await this.getAuthenticatedSession();
+      const client = await this.getAuthenticatedClient();
+      
       logger.info('PubkyAPISDK', 'Creating bookmark', { url });
 
       // Use official pubky-app-specs builder
@@ -72,13 +57,12 @@ class PubkyAPISDK {
       const fullPath = result.meta.url;
       const bookmarkId = result.meta.id;
       
-      // Write to homeserver using SDK
-      await this.ensurePubky();
-      
+      // Write to homeserver using authenticated client
       try {
-        await this.pubky.fetch(fullPath, {
+        await client.fetch(fullPath, {
           method: 'PUT',
           body: JSON.stringify(bookmark),
+          credentials: 'include', // CRITICAL: Include auth credentials
         });
         
         logger.info('PubkyAPISDK', 'Bookmark written to homeserver', { 
@@ -87,7 +71,8 @@ class PubkyAPISDK {
           data: bookmark 
         });
       } catch (writeError) {
-        logger.warn('PubkyAPISDK', 'Failed to write to homeserver, saving locally only', writeError as Error);
+        logger.error('PubkyAPISDK', 'Failed to write bookmark to homeserver', writeError as Error);
+        throw writeError;
       }
       
       return { fullPath, bookmarkId };
@@ -103,6 +88,8 @@ class PubkyAPISDK {
   async deleteBookmark(url: string): Promise<void> {
     try {
       const session = await this.getAuthenticatedSession();
+      const client = await this.getAuthenticatedClient();
+      
       logger.info('PubkyAPISDK', 'Deleting bookmark', { url });
 
       // Use official pubky-app-specs builder to regenerate the same ID
@@ -111,12 +98,11 @@ class PubkyAPISDK {
       
       const fullPath = result.meta.url;
       
-      // Delete from homeserver using SDK
-      await this.ensurePubky();
-      
+      // Delete from homeserver using authenticated client
       try {
-        await this.pubky.fetch(fullPath, {
+        await client.fetch(fullPath, {
           method: 'DELETE',
+          credentials: 'include', // CRITICAL: Include auth credentials
         });
         
         logger.info('PubkyAPISDK', 'Bookmark deleted from homeserver', { 
@@ -124,7 +110,8 @@ class PubkyAPISDK {
           id: result.meta.id
         });
       } catch (deleteError) {
-        logger.warn('PubkyAPISDK', 'Failed to delete from homeserver', deleteError as Error);
+        logger.error('PubkyAPISDK', 'Failed to delete bookmark from homeserver', deleteError as Error);
+        throw deleteError;
       }
     } catch (error) {
       logger.error('PubkyAPISDK', 'Failed to delete bookmark', error as Error);
@@ -138,9 +125,10 @@ class PubkyAPISDK {
   async createTags(url: string, labels: string[]): Promise<string[]> {
     try {
       const session = await this.getAuthenticatedSession();
+      const client = await this.getAuthenticatedClient();
+      
       logger.info('PubkyAPISDK', 'Creating tags', { url, labels });
 
-      await this.ensurePubky();
       const builder = new PubkySpecsBuilder(session.pubky);
       const tagUrls: string[] = [];
 
@@ -151,11 +139,12 @@ class PubkyAPISDK {
         const tag = result.tag.toJson();
         const fullPath = result.meta.url;
 
-        // Write to homeserver using SDK
+        // Write to homeserver using authenticated client
         try {
-          await this.pubky.fetch(fullPath, {
+          await client.fetch(fullPath, {
             method: 'PUT',
             body: JSON.stringify(tag),
+            credentials: 'include', // CRITICAL: Include auth credentials
           });
           
           logger.info('PubkyAPISDK', 'Tag written to homeserver', {
@@ -164,7 +153,8 @@ class PubkyAPISDK {
             data: tag
           });
         } catch (writeError) {
-          logger.warn('PubkyAPISDK', `Failed to write tag '${label}' to homeserver: ${(writeError as Error).message}`);
+          logger.error('PubkyAPISDK', `Failed to write tag '${label}' to homeserver`, writeError as Error);
+          throw writeError;
         }
 
         tagUrls.push(fullPath);
@@ -185,9 +175,9 @@ class PubkyAPISDK {
   async createLinkPost(url: string, content: string, tags: string[]): Promise<string> {
     try {
       const session = await this.getAuthenticatedSession();
+      const client = await this.getAuthenticatedClient();
+      
       logger.info('PubkyAPISDK', 'Creating link post', { url, tags });
-
-      await this.ensurePubky();
 
       // Use official pubky-app-specs builder
       const builder = new PubkySpecsBuilder(session.pubky);
@@ -202,11 +192,12 @@ class PubkyAPISDK {
       const post = result.post.toJson();
       const fullPath = result.meta.url;
 
-      // Write post to homeserver
+      // Write post to homeserver using authenticated client
       try {
-        await this.pubky.fetch(fullPath, {
+        await client.fetch(fullPath, {
           method: 'PUT',
           body: JSON.stringify(post),
+          credentials: 'include', // CRITICAL: Include auth credentials
         });
         
         logger.info('PubkyAPISDK', 'Post written to homeserver', { 
@@ -215,7 +206,8 @@ class PubkyAPISDK {
           data: post 
         });
       } catch (writeError) {
-        logger.warn('PubkyAPISDK', `Failed to write post to homeserver: ${(writeError as Error).message}`);
+        logger.error('PubkyAPISDK', 'Failed to write post to homeserver', writeError as Error);
+        throw writeError;
       }
 
       // Also create tags for the post
@@ -236,13 +228,13 @@ class PubkyAPISDK {
    */
   async readPublicData(pubky: string, path: string): Promise<any> {
     try {
-      await this.ensurePubky();
+      const client = await this.getAuthenticatedClient();
       
       const fullPath = `pubky://${pubky}${path}`;
       logger.debug('PubkyAPISDK', 'Reading public data', { fullPath });
 
-      // Use the client's fetch method to get data
-      const response = await this.pubky.fetch(fullPath);
+      // Use the client's fetch method to get data (no credentials needed for public reads)
+      const response = await client.fetch(fullPath);
       const data = await response.json();
       
       logger.info('PubkyAPISDK', 'Public data read successfully', { path });
@@ -258,13 +250,13 @@ class PubkyAPISDK {
    */
   async listPublicDirectory(pubky: string, path: string, limit: number = 10): Promise<string[]> {
     try {
-      await this.ensurePubky();
+      const client = await this.getAuthenticatedClient();
       
       const fullPath = `pubky://${pubky}${path}`;
       logger.debug('PubkyAPISDK', 'Listing directory', { fullPath });
 
       // Use the client's list method
-      const entries = await this.pubky.list(fullPath, null, false, limit, false);
+      const entries = await client.list(fullPath, null, false, limit, false);
 
       const paths = entries.map((entry: any) => entry);
       
