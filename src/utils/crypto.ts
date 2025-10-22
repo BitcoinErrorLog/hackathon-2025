@@ -130,25 +130,50 @@ export function parseAuthToken(tokenBytes: Uint8Array): AuthToken {
 
 /**
  * Generate a URL hash tag for Nexus querying
- * Creates a UTF-16 encoded SHA-256 hash of the URL
- * This allows finding all posts about the same URL by searching this tag
+ * Creates a UTF-16 encoded SHA-256 hash of the URL compressed to <20 characters
+ * 
+ * Process:
+ * 1. SHA-256 hash the URL (32 bytes = 256 bits)
+ * 2. Encode as UTF-16 characters (16 bits per char = 16 chars)
+ * 3. Prefix with 'ū' marker (total 17 chars, within 20-char limit)
+ * 
+ * This provides deterministic, collision-resistant tags with full UTF-16 entropy.
  */
 export async function generateUrlHashTag(url: string): Promise<string> {
   try {
-    // Encode the URL as UTF-16
+    // Encode the URL as UTF-8 bytes
     const encoder = new TextEncoder();
     const urlBytes = encoder.encode(url);
     
-    // Generate SHA-256 hash
+    // Generate SHA-256 hash (32 bytes)
     const hashBytes = await sha256(urlBytes);
     
-    // Convert to hex string
-    const hashHex = bytesToHex(hashBytes);
+    // Encode hash as UTF-16 characters for maximum compression
+    // Each pair of bytes becomes one UTF-16 character (16 bits)
+    let utf16Chars = '';
+    for (let i = 0; i < hashBytes.length; i += 2) {
+      // Combine two bytes into a 16-bit value
+      const charCode = (hashBytes[i] << 8) | hashBytes[i + 1];
+      
+      // Skip surrogate pair range (0xD800-0xDFFF) to avoid invalid UTF-16
+      // Map to safe range if we hit it
+      let safeCharCode = charCode;
+      if (charCode >= 0xD800 && charCode <= 0xDFFF) {
+        // Map surrogate range to safe range (0xE000+)
+        safeCharCode = 0xE000 + (charCode - 0xD800);
+      }
+      
+      utf16Chars += String.fromCharCode(safeCharCode);
+    }
     
-    // Prefix with 'url:' to identify it as a URL hash tag
-    const hashTag = `url:${hashHex}`;
+    // Prefix with 'ū' to identify as URL hash (17 chars total)
+    const hashTag = `ū${utf16Chars}`;
     
-    logger.debug('Crypto', 'Generated URL hash tag', { url, hashTag });
+    logger.debug('Crypto', 'Generated UTF-16 URL hash tag', { 
+      url, 
+      hashTag,
+      length: hashTag.length 
+    });
     
     return hashTag;
   } catch (error) {
