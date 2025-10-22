@@ -79,6 +79,7 @@ class PubkyAPISDK {
         await this.pubky.fetch(fullPath, {
           method: 'PUT',
           body: JSON.stringify(bookmark),
+          credentials: 'include',
         });
         
         logger.info('PubkyAPISDK', 'Bookmark written to homeserver', { 
@@ -117,6 +118,7 @@ class PubkyAPISDK {
       try {
         await this.pubky.fetch(fullPath, {
           method: 'DELETE',
+          credentials: 'include',
         });
         
         logger.info('PubkyAPISDK', 'Bookmark deleted from homeserver', { 
