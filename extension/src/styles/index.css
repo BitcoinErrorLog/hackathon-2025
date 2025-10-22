@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family: theme('fontFamily.sans');
+}
+
+.glow-border {
+  box-shadow: inset 0 0 0 1px theme('colors.franky.sky'), 0 0 24px rgba(0, 224, 255, 0.45);
+}

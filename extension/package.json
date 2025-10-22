@@ -1,0 +1,31 @@
+{
+  "name": "graphiti",
+  "version": "0.1.0",
+  "description": "Graphiti — Pubky URL Tagger Chrome extension",
+  "author": "",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@synonymdev/pubky": "0.6.0-rc.6",
+    "pubky-app-specs": "^0.5.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.24",
+    "@types/chrome": "^0.0.266",
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "autoprefixer": "^10.4.15",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.5",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
+  }
+}

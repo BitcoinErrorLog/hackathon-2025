@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["DOM", "DOM.Iterable", "ES2021"],
+    "jsx": "react-jsx",
+    "allowJs": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["chrome", "vite/client"],
+    "baseUrl": "."
+  },
+  "include": [
+    "vite.config.ts",
+    "manifest.config.ts",
+    "tailwind.config.ts",
+    "postcss.config.cjs",
+    "src"
+  ]
+}
