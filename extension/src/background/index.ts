@@ -18,8 +18,15 @@ import {
 } from '../lib/messaging';
 import { STORAGE_KEYS } from '../lib/constants';
 import { buildLinkRecord, computeRecordId, normalizeTags, normalizeUrl } from '../lib/records';
-import type { BookmarkEntry, FeedItem } from '../lib/types';
-import { getLocal, getSession as getSessionStorage, getSync, setLocal, setSession as setSessionStorage, setSync } from '../lib/storage';
+import type { BookmarkEntry, FeedItem, GraphitiStatusSnapshot, PendingPublication } from '../lib/types';
+import {
+  getLocal,
+  getSession as getSessionStorage,
+  getSync,
+  setLocal,
+  setSession as setSessionStorage,
+  setSync,
+} from '../lib/storage';
 
 const client = getPubkyClient();
 
@@ -69,6 +76,46 @@ const broadcastBookmarks = (bookmarks: BookmarkEntry[]) => {
   }
 };
 
+const broadcastPending = (pending: PendingPublication[]) => {
+  try {
+    chrome.runtime.sendMessage({ type: 'graphiti/pending-publications-updated', pending });
+  } catch (error) {
+    console.warn('Graphiti pending broadcast error', error);
+  }
+};
+
+const broadcastStatus = (status: GraphitiStatusSnapshot) => {
+  try {
+    chrome.runtime.sendMessage({ type: 'graphiti/status-updated', status });
+  } catch (error) {
+    console.warn('Graphiti status broadcast error', error);
+  }
+};
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isOnline = () => {
+  if (typeof navigator === 'undefined') return true;
+  if (typeof navigator.onLine === 'boolean') {
+    return navigator.onLine;
+  }
+  return true;
+};
+
+const withRetry = async <T>(operation: (attempt: number) => Promise<T>, attempts = 3, baseDelayMs = 500) => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await operation(attempt);
+    } catch (error) {
+      lastError = error;
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      await wait(delay);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Operation failed after retries');
+};
+
 const loadTagHistory = async () => {
   try {
     const stored = await getLocal<string[]>(STORAGE_KEYS.tagHistory);
@@ -86,6 +133,29 @@ const mergeTagHistory = async (tags: string[]) => {
   const merged = Array.from(new Set([...existing, ...normalized])).sort();
   await setLocal({ [STORAGE_KEYS.tagHistory]: merged });
   return merged;
+};
+
+type StatusMetadata = {
+  lastHomeserverError?: string;
+  lastSuccessfulPublishAt?: string;
+};
+
+const loadStatusMetadata = async (): Promise<StatusMetadata> => {
+  try {
+    const stored = await getLocal<StatusMetadata>(STORAGE_KEYS.lastKnownStatus);
+    if (stored && typeof stored === 'object') {
+      return stored;
+    }
+    return {};
+  } catch (error) {
+    console.warn('Failed to load status metadata', error);
+    return {};
+  }
+};
+
+const persistStatusMetadata = async (metadata: StatusMetadata) => {
+  await setLocal({ [STORAGE_KEYS.lastKnownStatus]: metadata });
+  return metadata;
 };
 
 const loadBookmarks = async () => {
@@ -143,6 +213,92 @@ const deleteBookmark = async (id: string) => {
   const bookmarks = await loadBookmarks();
   const filtered = bookmarks.filter((entry) => entry.id !== id);
   await persistBookmarks(filtered);
+};
+
+const loadPendingPublications = async () => {
+  try {
+    const stored = await getLocal<PendingPublication[]>(STORAGE_KEYS.pendingPublications);
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .filter((entry): entry is PendingPublication => Boolean(entry?.id) && Boolean(entry?.payload?.url))
+      .map((entry) => ({ ...entry, attempts: typeof entry.attempts === 'number' ? entry.attempts : 0 }))
+      .sort((a, b) => new Date(a.createdAt).valueOf() - new Date(b.createdAt).valueOf());
+  } catch (error) {
+    console.warn('Failed to load pending publications', error);
+    return [];
+  }
+};
+
+const composeStatusSnapshot = async (): Promise<GraphitiStatusSnapshot> => {
+  const [metadata, pending] = await Promise.all([loadStatusMetadata(), loadPendingPublications()]);
+  return {
+    online: isOnline(),
+    lastHomeserverError: metadata.lastHomeserverError,
+    lastSuccessfulPublishAt: metadata.lastSuccessfulPublishAt,
+    pendingPublications: pending,
+  };
+};
+
+const broadcastStatusSnapshot = async () => {
+  const snapshot = await composeStatusSnapshot();
+  broadcastStatus(snapshot);
+  return snapshot;
+};
+
+const persistPendingPublications = async (pending: PendingPublication[]) => {
+  await setLocal({ [STORAGE_KEYS.pendingPublications]: pending });
+  broadcastPending(pending);
+  await broadcastStatusSnapshot();
+  return pending;
+};
+
+const enqueuePendingPublication = async (
+  payload: Parameters<typeof buildLinkRecord>[0],
+  error?: string,
+) => {
+  const pending = await loadPendingPublications();
+  const entry: PendingPublication = {
+    id: randomId(),
+    payload,
+    createdAt: new Date().toISOString(),
+    attempts: 0,
+    error,
+  };
+  pending.push(entry);
+  await persistPendingPublications(pending);
+  return entry;
+};
+
+const upsertPendingPublication = async (entry: PendingPublication) => {
+  const pending = await loadPendingPublications();
+  const next = pending.map((item) => (item.id === entry.id ? entry : item));
+  await persistPendingPublications(next);
+  return entry;
+};
+
+const removePendingPublication = async (id: string) => {
+  const pending = await loadPendingPublications();
+  const next = pending.filter((entry) => entry.id !== id);
+  await persistPendingPublications(next);
+  return next;
+};
+
+const recordHomeserverError = async (message: string) => {
+  const metadata = await loadStatusMetadata();
+  const next: StatusMetadata = { ...metadata, lastHomeserverError: message };
+  await persistStatusMetadata(next);
+  await broadcastStatusSnapshot();
+};
+
+const recordSuccessfulPublish = async () => {
+  const metadata = await loadStatusMetadata();
+  const next: StatusMetadata = {
+    ...metadata,
+    lastHomeserverError: undefined,
+    lastSuccessfulPublishAt: new Date().toISOString(),
+  };
+  await persistStatusMetadata(next);
+  await broadcastStatusSnapshot();
 };
 
 const loadFeedCache = async () => {
@@ -323,9 +479,32 @@ const fetchFeed = async (url: string, forceRefresh = false) => {
     }
   }
 
+  if (!isOnline()) {
+    const cache = await loadFeedCache();
+    const cached = cache[normalizedUrl];
+    if (cached) {
+      return cached;
+    }
+    const offlineError = 'You appear to be offline. Graphiti will retry once the connection returns.';
+    await recordHomeserverError(offlineError);
+    throw new Error(offlineError);
+  }
+
   const session = await loadSession();
   const follows = await fetchFollows(session?.identity);
-  const rawRecords = await requestLinkRecords(normalizedUrl, follows);
+  let rawRecords: any[] = [];
+  try {
+    rawRecords = await withRetry(() => requestLinkRecords(normalizedUrl, follows));
+  } catch (error) {
+    const message = (error as Error)?.message ?? 'Unable to load feed from Pubky homeserver.';
+    await recordHomeserverError(message);
+    const cache = await loadFeedCache();
+    const cached = cache[normalizedUrl];
+    if (cached) {
+      return cached;
+    }
+    throw error;
+  }
   const feed = await resolveFeedItems(rawRecords, normalizedUrl);
   const filtered = follows.length
     ? feed.filter((item) => follows.includes(item.author.pubkey))
@@ -336,48 +515,113 @@ const fetchFeed = async (url: string, forceRefresh = false) => {
   return filtered;
 };
 
-const publishLink = async (payload: Parameters<typeof buildLinkRecord>[0]) => {
+const attemptPublishPayload = async (payload: Parameters<typeof buildLinkRecord>[0]) => {
   const record = await buildLinkRecord(payload);
   const clientAny = client as any;
-  const attempts = [
-    () => clientAny?.apps?.records?.put?.(record.appId, record.collection, record.recordId, record.value),
-    () => clientAny?.apps?.putRecord?.(record),
-    () => clientAny?.apps?.publish?.(record),
-    () => clientAny?.apps?.records?.set?.({
-      appId: record.appId,
-      collection: record.collection,
-      recordId: record.recordId,
-      value: record.value,
-    }),
-  ];
 
-  let succeeded = false;
-  for (const attempt of attempts) {
+  const publishAttempt = async () => {
+    if (!isOnline()) {
+      throw new Error('You appear to be offline. Saved to pending queue.');
+    }
+    const attempts = [
+      () => clientAny?.apps?.records?.put?.(record.appId, record.collection, record.recordId, record.value),
+      () => clientAny?.apps?.putRecord?.(record),
+      () => clientAny?.apps?.publish?.(record),
+      () =>
+        clientAny?.apps?.records?.set?.({
+          appId: record.appId,
+          collection: record.collection,
+          recordId: record.recordId,
+          value: record.value,
+        }),
+    ];
+
+    let lastError: unknown;
+    for (const attempt of attempts) {
+      try {
+        if (!attempt) continue;
+        await attempt();
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+        console.warn('Pubky publish attempt failed', error);
+      }
+    }
+
+    if (lastError) {
+      throw lastError instanceof Error
+        ? lastError
+        : new Error('Unable to publish link record to Pubky homeserver.');
+    }
+
+    return record;
+  };
+
+  const finalRecord = await withRetry(publishAttempt, 3, 750);
+  const value = finalRecord.value as { url?: string; tags?: string[] };
+  const url = value?.url ?? payload.url;
+  const tags = Array.isArray(value?.tags) ? value.tags : payload.tags ?? [];
+  return { recordId: finalRecord.recordId, url, tags };
+};
+
+const flushPendingPublications = async (force = false) => {
+  const pending = await loadPendingPublications();
+  if (!pending.length) return pending;
+  if (!isOnline() && !force) {
+    return pending;
+  }
+
+  const remaining: PendingPublication[] = [];
+  let publishedAny = false;
+  for (const entry of pending) {
     try {
-      if (!attempt) continue;
-      await attempt();
-      succeeded = true;
-      break;
+      const result = await attemptPublishPayload(entry.payload);
+      publishedAny = true;
+      await mergeTagHistory(result.tags);
+      await fetchFeed(result.url, true).catch((error) => console.warn('Feed refresh after pending publish failed', error));
     } catch (error) {
-      console.warn('Pubky publish attempt failed', error);
+      const message = (error as Error)?.message ?? 'Unable to publish pending link record.';
+      const next: PendingPublication = {
+        ...entry,
+        attempts: (entry.attempts ?? 0) + 1,
+        lastAttemptAt: new Date().toISOString(),
+        error: message,
+      };
+      remaining.push(next);
+      await recordHomeserverError(message);
     }
   }
 
-  if (!succeeded) {
-    throw new Error('Unable to publish link record to Pubky homeserver.');
+  if (publishedAny) {
+    await recordSuccessfulPublish();
   }
 
-  const value = record.value as { url?: string; tags?: string[] };
-  const url = value?.url ?? payload.url;
-  const tags = Array.isArray(value?.tags) ? value.tags : payload.tags ?? [];
-  await mergeTagHistory(tags);
-  await fetchFeed(url, true).catch((error) => console.warn('Feed refresh after publish failed', error));
-  return record.recordId;
+  await persistPendingPublications(remaining);
+  return remaining;
+};
+
+const publishLink = async (payload: Parameters<typeof buildLinkRecord>[0]) => {
+  try {
+    const result = await attemptPublishPayload(payload);
+    await mergeTagHistory(result.tags);
+    await recordSuccessfulPublish();
+    await fetchFeed(result.url, true).catch((error) => console.warn('Feed refresh after publish failed', error));
+    await flushPendingPublications();
+    return result.recordId;
+  } catch (error) {
+    const message = (error as Error)?.message ?? 'Unable to publish link record to Pubky homeserver.';
+    await recordHomeserverError(message);
+    await enqueuePendingPublication(payload, message);
+    throw new Error(`${message} Saved to pending queue for retry.`);
+  }
 };
 
 client.ring.onSessionAuthenticated(async (session) => {
   await persistSession(session);
   broadcastAuth(session);
+  await flushPendingPublications(true).catch((error) => console.warn('Pending publish flush after auth failed', error));
+  await broadcastStatusSnapshot().catch((error) => console.warn('Status broadcast after auth failed', error));
 });
 
 const bootstrap = async () => {
@@ -398,9 +642,20 @@ const bootstrap = async () => {
     await clearSession();
   }
   broadcastAuth(undefined);
+  await flushPendingPublications().catch((error) => console.warn('Initial pending flush failed', error));
+  await broadcastStatusSnapshot().catch((error) => console.warn('Initial status broadcast failed', error));
 };
 
 void bootstrap();
+
+if (chrome?.alarms) {
+  chrome.alarms.create('graphiti.flush-pending', { delayInMinutes: 1, periodInMinutes: 1 });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'graphiti.flush-pending') {
+      void flushPendingPublications().catch((error) => console.warn('Scheduled pending flush failed', error));
+    }
+  });
+}
 
 chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendResponse) => {
   const respond = (response: BackgroundResponse) => {
@@ -469,6 +724,53 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
       case 'graphiti/get-tag-history': {
         const tags = await loadTagHistory();
         respond({ type: 'graphiti/tag-history', tags });
+        break;
+      }
+      case 'graphiti/get-status': {
+        const status = await composeStatusSnapshot();
+        respond({ type: 'graphiti/status', status });
+        break;
+      }
+      case 'graphiti/get-pending-publications': {
+        const pending = await loadPendingPublications();
+        respond({ type: 'graphiti/pending-publications', pending });
+        break;
+      }
+      case 'graphiti/retry-pending-publication': {
+        const pending = await loadPendingPublications();
+        const entry = pending.find((item) => item.id === message.id);
+        if (!entry) {
+          respond({ type: 'error', error: 'Pending publication not found.' });
+          break;
+        }
+
+        try {
+          const result = await attemptPublishPayload(entry.payload);
+          await mergeTagHistory(result.tags);
+          await removePendingPublication(entry.id);
+          await recordSuccessfulPublish();
+          await fetchFeed(result.url, true).catch((error) => console.warn('Feed refresh after retry failed', error));
+          const next = await loadPendingPublications();
+          respond({ type: 'graphiti/pending-publications', pending: next });
+        } catch (error) {
+          const messageText = (error as Error)?.message ?? 'Retry failed.';
+          const updated: PendingPublication = {
+            ...entry,
+            attempts: (entry.attempts ?? 0) + 1,
+            lastAttemptAt: new Date().toISOString(),
+            error: messageText,
+          };
+          await upsertPendingPublication(updated);
+          await recordHomeserverError(messageText);
+          const next = await loadPendingPublications();
+          respond({ type: 'graphiti/pending-publications', pending: next });
+        }
+        break;
+      }
+      case 'graphiti/cancel-pending-publication': {
+        await removePendingPublication(message.id);
+        const next = await loadPendingPublications();
+        respond({ type: 'graphiti/pending-publications', pending: next });
         break;
       }
       default: {

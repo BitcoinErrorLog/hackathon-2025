@@ -1,6 +1,6 @@
-# Graphiti — Stage 2 Feed & Tagging
+# Graphiti — Stage 3 Polish & Resilience
 
-Stage 2 builds on the initial Graphiti foundation by wiring the popup into Pubky link publishing, introducing a Franky-styled tagging workflow, and lighting up the side panel feed for the current page. The extension now lets you authenticate with Pubky Ring, publish deterministic link posts, and review what your follows have said about the URL you’re browsing.
+Stage 3 adds Franky-flavoured finesse and real-world resiliency to Graphiti. The extension now adapts to the user’s system theme, highlights state with playful neon micro-interactions, and gracefully handles flaky connectivity by queueing publishes for later. Feed views react to homeserver hiccups, letting you keep browsing cached context while Graphiti retries uploads in the background.
 
 ## Scripts
 
@@ -8,13 +8,13 @@ Stage 2 builds on the initial Graphiti foundation by wiring the popup into Pubky
 - `npm run build` – Type-check and generate the production-ready extension bundle inside `dist/` for "Load unpacked".
 - `npm run preview` – Preview the built extension locally.
 
-## Stage 2 highlights
+## Stage 3 highlights
 
-- **Pubky publishing pipeline** – The popup’s “Publish to Pubky” button now composes deterministic link records via `pubky-app-specs`, pushes them through the background worker, and refreshes the sidebar feed on success.
-- **Franky-flavored tagging UI** – Tag chips, history suggestions, and slug validation mirror the Pubky App schema while keeping the neon Franky aesthetic.
-- **Local bookmark vault** – Save the current URL (plus tags and notes) into Chrome sync storage. The list auto-refreshes via background events.
-- **Sidebar activity feed** – The side panel fetches and renders follows’ link posts for the active URL, complete with author badges, timestamps, and tag chips. Refresh manually or rely on background broadcasts after publishes.
-- **Metadata enrichment** – The content script now captures canonical URL, Open Graph data, icons, and language to pre-fill publishing metadata.
+- **Adaptive Franky theming** – Popup and side panel automatically match the user’s light/dark preference, applying blurred Franky panels, animated neon hover states, and new typography polish.
+- **Offline-first publishing** – Link posts that fail to reach the homeserver land in a pending queue with retry/dismiss controls. Graphiti retries automatically via background alarms when connectivity returns.
+- **Status-aware feed** – Sidebar surfaces connection state, pending publish counts, and cached-feed messaging so users understand what they’re seeing even when offline or signed out.
+- **Homeserver resilience** – Background worker now retries Pubky API calls with exponential backoff, broadcasts status snapshots, and falls back to cached data when the homeserver is slow or unreachable.
+- **Queued telemetry** – Publish retries, feed refreshes, and tag history updates update a shared status snapshot so both surfaces stay in sync without reloading.
 
 ## Quick start
 
@@ -29,3 +29,4 @@ Stage 2 builds on the initial Graphiti foundation by wiring the popup into Pubky
 - Tags must be lowercase slugs; the editor normalises input and surfaces recent history from previous posts or bookmarks.
 - Bookmarks live entirely in Chrome sync storage and never hit the Pubky homeserver. Use them as a quick local queue alongside published posts.
 - Homeserver changes propagate immediately to the Pubky client and future API calls; you can switch environments without reloading the extension.
+- If you go offline, publishes are saved in the pending queue and will auto-sync (or can be manually retried) once you’re back online.

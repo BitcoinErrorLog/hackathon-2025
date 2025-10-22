@@ -5,7 +5,7 @@ import type {
   PubkySessionPayload,
   RuntimeEvent,
 } from '../lib/messaging';
-import type { BookmarkEntry } from '../lib/types';
+import type { BookmarkEntry, GraphitiStatusSnapshot, PendingPublication } from '../lib/types';
 import { STORAGE_KEYS } from '../lib/constants';
 import { normalizeTags, slugifyTag } from '../lib/records';
 import '../styles/index.css';
@@ -236,16 +236,16 @@ const TagEditor = ({
   return (
     <div className="flex flex-col gap-2">
       <label className="text-xs uppercase tracking-wide text-franky-sand/70">Tags</label>
-      <div className="flex flex-wrap items-center gap-2 rounded-franky border border-franky-sky/30 bg-franky-night/70 p-2 text-sm text-franky-sand shadow-inner">
+      <div className="graphiti-panel flex flex-wrap items-center gap-2 rounded-franky border border-franky-sky/30 bg-franky-night/70 p-2 text-sm text-franky-sand shadow-inner transition-all duration-300">
         {tags.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 rounded-full bg-franky-sky/20 px-2 py-1 text-xs font-semibold text-franky-sky"
+            className="inline-flex items-center gap-1 rounded-full bg-franky-sky/20 px-2 py-1 text-xs font-semibold text-franky-sky transition-all duration-200 hover:-translate-y-0.5 hover:shadow-glow"
           >
             #{tag}
             <button
               type="button"
-              className="text-[10px] text-franky-sand/80 hover:text-franky-blush"
+              className="text-[10px] text-franky-sand/80 transition hover:scale-110 hover:text-franky-blush"
               onClick={() => removeTag(tag)}
             >
               ×
@@ -269,7 +269,7 @@ const TagEditor = ({
               key={tag}
               type="button"
               onClick={() => addTag(tag)}
-              className="rounded-full border border-franky-sky/40 px-2 py-0.5 text-xs text-franky-sky transition hover:bg-franky-sky/20"
+              className="rounded-full border border-franky-sky/40 px-2 py-0.5 text-xs text-franky-sky transition-all hover:-translate-y-0.5 hover:bg-franky-sky/20"
             >
               #{tag}
             </button>
@@ -294,7 +294,7 @@ const CommentField = ({ value, onChange }: { value: string; onChange: (next: str
 );
 
 const BookmarkList = ({ bookmarks, onRemove }: { bookmarks: BookmarkEntry[]; onRemove: (id: string) => void }) => (
-  <section className="rounded-franky bg-franky-night/60 p-4 shadow-card">
+  <section className="graphiti-panel rounded-franky bg-franky-night/60 p-4 shadow-card transition-all duration-300">
     <header className="flex items-center justify-between">
       <h2 className="text-sm font-semibold text-franky-sand">Local bookmarks</h2>
       <span className="text-[11px] uppercase text-franky-sand/50">syncs via Chrome</span>
@@ -343,11 +343,106 @@ const BookmarkList = ({ bookmarks, onRemove }: { bookmarks: BookmarkEntry[]; onR
   </section>
 );
 
+const StatusCallout = ({
+  status,
+  error,
+}: {
+  status?: GraphitiStatusSnapshot;
+  error?: string | null;
+}) => {
+  if (!status && !error) return null;
+  const offline = status?.online === false;
+  const lastSuccess = status?.lastSuccessfulPublishAt
+    ? new Date(status.lastSuccessfulPublishAt).toLocaleString()
+    : undefined;
+  return (
+    <div className="graphiti-panel rounded-franky border border-franky-sky/30 bg-franky-night/70 p-3 text-xs shadow-glow">
+      {offline && (
+        <p className="flex items-center gap-2 text-franky-lime">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-franky-lime" />
+          You are offline. Publishing will be queued until connectivity returns.
+        </p>
+      )}
+      {status?.lastHomeserverError && (
+        <p className="mt-1 text-franky-blush">{status.lastHomeserverError}</p>
+      )}
+      {error && <p className="mt-1 text-franky-blush">{error}</p>}
+      {lastSuccess && (
+        <p className="mt-1 text-franky-sand/70">Last successful publish: {lastSuccess}</p>
+      )}
+    </div>
+  );
+};
+
+const PendingQueue = ({
+  pending,
+  onRetry,
+  onCancel,
+  busyId,
+}: {
+  pending: PendingPublication[];
+  onRetry: (id: string) => Promise<void>;
+  onCancel: (id: string) => Promise<void>;
+  busyId?: string | null;
+}) => {
+  if (!pending.length) return null;
+  return (
+    <section className="graphiti-panel rounded-franky border border-franky-sky/30 bg-franky-ink/70 p-4 shadow-card">
+      <header className="mb-2 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-franky-sand">Queued publishes</h2>
+          <p className="text-[11px] uppercase text-franky-sand/50">
+            We will retry automatically when you are online
+          </p>
+        </div>
+      </header>
+      <ul className="flex flex-col gap-3">
+        {pending.map((item) => (
+          <li key={item.id} className="rounded-franky border border-franky-sky/20 bg-franky-night/60 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-franky-sky">{item.payload.url}</p>
+                {item.payload.tags?.length ? (
+                  <p className="mt-1 text-xs text-franky-sand/70">
+                    Tags: {item.payload.tags.map((tag) => `#${tag}`).join(', ')}
+                  </p>
+                ) : null}
+                {item.error && <p className="mt-1 text-xs text-franky-blush">{item.error}</p>}
+                {item.lastAttemptAt && (
+                  <p className="mt-1 text-[10px] uppercase text-franky-sand/40">
+                    Last attempt {new Date(item.lastAttemptAt).toLocaleTimeString()} (x{item.attempts ?? 0})
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-2 text-[11px]">
+                <button
+                  className="rounded-full bg-franky-sky/20 px-3 py-1 font-semibold text-franky-sky transition hover:bg-franky-sky/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={busyId === item.id}
+                  onClick={() => void onRetry(item.id)}
+                >
+                  {busyId === item.id ? 'Retrying…' : 'Retry now'}
+                </button>
+                <button
+                  className="rounded-full border border-franky-blush/40 px-3 py-1 font-semibold text-franky-blush transition hover:bg-franky-blush/20 disabled:cursor-not-allowed"
+                  disabled={busyId === item.id}
+                  onClick={() => void onCancel(item.id)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
+
 const CurrentPageCard = ({ metadata }: { metadata: PageMetadata | null }) => {
   if (!metadata) return null;
   const url = new URL(metadata.url);
   return (
-    <div className="rounded-franky bg-franky-night/70 p-4 shadow-card">
+    <div className="graphiti-panel rounded-franky bg-franky-night/70 p-4 shadow-card transition-all duration-300">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           {metadata.icon && (
@@ -388,6 +483,38 @@ export const App = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [bookmarking, setBookmarking] = useState(false);
+  const [statusSnapshot, setStatusSnapshot] = useState<GraphitiStatusSnapshot>();
+  const [pendingQueue, setPendingQueue] = useState<PendingPublication[]>([]);
+  const [pendingBusyId, setPendingBusyId] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      return 'light';
+    }
+    return 'dark';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(prefers-color-scheme: light)');
+    const updateTheme = () => setTheme(media.matches ? 'light' : 'dark');
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', updateTheme);
+    } else {
+      media.addListener(updateTheme);
+    }
+    updateTheme();
+    return () => {
+      if (typeof media.removeEventListener === 'function') {
+        media.removeEventListener('change', updateTheme);
+      } else {
+        media.removeListener(updateTheme);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    document.body.dataset.theme = theme;
+  }, [theme]);
 
   useEffect(() => {
     sendMessage({ type: 'graphiti/get-tag-history' })
@@ -404,12 +531,30 @@ export const App = () => {
         }
       })
       .catch(() => undefined);
+    sendMessage({ type: 'graphiti/get-status' })
+      .then((response) => {
+        if (response.type === 'graphiti/status') {
+          setStatusSnapshot(response.status);
+        }
+      })
+      .catch(() => undefined);
+    sendMessage({ type: 'graphiti/get-pending-publications' })
+      .then((response) => {
+        if (response.type === 'graphiti/pending-publications') {
+          setPendingQueue(response.pending);
+        }
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
     const handler = (event: RuntimeEvent) => {
       if (event.type === 'graphiti/bookmarks-updated') {
         setBookmarks(event.bookmarks);
+      } else if (event.type === 'graphiti/pending-publications-updated') {
+        setPendingQueue(event.pending);
+      } else if (event.type === 'graphiti/status-updated') {
+        setStatusSnapshot(event.status);
       }
     };
     chrome.runtime.onMessage.addListener(handler);
@@ -466,6 +611,16 @@ export const App = () => {
     [tagHistory, tags],
   );
 
+  const offline = statusSnapshot?.online === false;
+
+  const refreshStatus = useCallback(async () => {
+    const response = await sendMessage({ type: 'graphiti/get-status' });
+    if (response.type === 'graphiti/status') {
+      setStatusSnapshot(response.status);
+      setPendingQueue(response.status.pendingPublications);
+    }
+  }, []);
+
   const handlePublish = useCallback(async () => {
     if (!metadata) return;
     if (!tags.length) {
@@ -508,8 +663,9 @@ export const App = () => {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setPublishing(false);
+      await refreshStatus().catch(() => undefined);
     }
-  }, [metadata, tags, comment]);
+  }, [metadata, tags, comment, refreshStatus]);
 
   const handleBookmark = useCallback(async () => {
     if (!metadata) return;
@@ -539,8 +695,9 @@ export const App = () => {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setBookmarking(false);
+      await refreshStatus().catch(() => undefined);
     }
-  }, [metadata, tags, comment]);
+  }, [metadata, tags, comment, refreshStatus]);
 
   const handleRemoveBookmark = useCallback(async (id: string) => {
     await sendMessage({ type: 'graphiti/delete-bookmark', id }).catch((error) => {
@@ -548,10 +705,57 @@ export const App = () => {
     });
   }, []);
 
+  const handleRetryPending = useCallback(
+    async (id: string) => {
+      setPendingBusyId(id);
+      try {
+        const response = await sendMessage({ type: 'graphiti/retry-pending-publication', id });
+        if (response.type === 'graphiti/pending-publications') {
+          setPendingQueue(response.pending);
+        } else if (response.type === 'error') {
+          throw new Error(response.error);
+        }
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      } finally {
+        setPendingBusyId(null);
+        await refreshStatus().catch(() => undefined);
+      }
+    },
+    [refreshStatus],
+  );
+
+  const handleCancelPending = useCallback(
+    async (id: string) => {
+      setPendingBusyId(id);
+      try {
+        const response = await sendMessage({ type: 'graphiti/cancel-pending-publication', id });
+        if (response.type === 'graphiti/pending-publications') {
+          setPendingQueue(response.pending);
+        } else if (response.type === 'error') {
+          throw new Error(response.error);
+        }
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      } finally {
+        setPendingBusyId(null);
+        await refreshStatus().catch(() => undefined);
+      }
+    },
+    [refreshStatus],
+  );
+
   const canPublish = session?.status === 'authenticated' && Boolean(metadata) && tags.length > 0 && !publishing;
 
+  const containerThemeClass =
+    theme === 'light'
+      ? 'from-franky-sand via-white to-franky-lime/10 text-franky-ink'
+      : 'from-franky-ink to-franky-night text-franky-sand';
+
   return (
-    <div className="flex min-h-[540px] flex-col gap-4 bg-gradient-to-b from-franky-ink to-franky-night p-4 text-franky-sand">
+    <div
+      className={`graphiti-surface flex min-h-[540px] flex-col gap-4 bg-gradient-to-b ${containerThemeClass} p-4 transition-colors duration-500`}
+    >
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-franky-sand">Graphiti</h1>
@@ -565,6 +769,8 @@ export const App = () => {
       <LoginControls session={session} onLogin={handleLogin} onLogout={handleLogout} />
 
       {qrCode && <QRDisplay qr={qrCode} />}
+
+      <StatusCallout status={statusSnapshot} error={errorMessage ?? authState.error} />
 
       <CurrentPageCard metadata={metadata} />
 
@@ -589,14 +795,13 @@ export const App = () => {
         </button>
       </div>
 
-      {(statusMessage || errorMessage || authState.error) && (
-        <div className="rounded-franky border border-franky-sky/20 bg-franky-night/60 p-3 text-xs">
-          {statusMessage && <p className="text-franky-sky">{statusMessage}</p>}
-          {(errorMessage || authState.error) && (
-            <p className="text-franky-blush">{errorMessage ?? authState.error}</p>
-          )}
+      {statusMessage && (
+        <div className="graphiti-panel rounded-franky border border-franky-sky/20 bg-franky-night/60 p-3 text-xs text-franky-sky">
+          {statusMessage}
         </div>
       )}
+
+      <PendingQueue pending={pendingQueue} onRetry={handleRetryPending} onCancel={handleCancelPending} busyId={pendingBusyId} />
 
       <BookmarkList bookmarks={bookmarks} onRemove={handleRemoveBookmark} />
     </div>

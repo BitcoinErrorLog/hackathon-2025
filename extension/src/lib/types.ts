@@ -32,3 +32,19 @@ export interface BookmarkEntry {
   note?: string;
   savedAt: string;
 }
+
+export interface PendingPublication {
+  id: string;
+  payload: LinkRecordPayload;
+  createdAt: string;
+  lastAttemptAt?: string;
+  attempts: number;
+  error?: string;
+}
+
+export interface GraphitiStatusSnapshot {
+  online: boolean;
+  lastHomeserverError?: string;
+  lastSuccessfulPublishAt?: string;
+  pendingPublications: PendingPublication[];
+}

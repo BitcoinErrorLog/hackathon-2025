@@ -5,6 +5,8 @@ const manifest = defineManifest(() => ({
   name: 'Graphiti — Pubky URL Tagger',
   description: 'Tag and publish deterministic Pubky link posts from Chrome with Franky flair.',
   version: '0.1.0',
+  theme_color: '#0B1021',
+  background_color: '#0B1021',
   action: {
     default_title: 'Graphiti',
     default_popup: 'popup.html'
@@ -22,7 +24,8 @@ const manifest = defineManifest(() => ({
     'activeTab',
     'scripting',
     'notifications',
-    'sidePanel'
+    'sidePanel',
+    'alarms'
   ],
   host_permissions: ['<all_urls>'],
   content_scripts: [

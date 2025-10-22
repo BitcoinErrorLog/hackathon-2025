@@ -1,4 +1,10 @@
-import type { BookmarkEntry, FeedItem, LinkRecordPayload } from './types';
+import type {
+  BookmarkEntry,
+  FeedItem,
+  GraphitiStatusSnapshot,
+  LinkRecordPayload,
+  PendingPublication,
+} from './types';
 
 export type BackgroundMessage =
   | { type: 'pubky/login' }
@@ -11,7 +17,11 @@ export type BackgroundMessage =
   | { type: 'graphiti/get-bookmarks' }
   | { type: 'graphiti/save-bookmark'; payload: Omit<BookmarkEntry, 'id' | 'savedAt'> & { id?: string } }
   | { type: 'graphiti/delete-bookmark'; id: string }
-  | { type: 'graphiti/get-tag-history' };
+  | { type: 'graphiti/get-tag-history' }
+  | { type: 'graphiti/get-status' }
+  | { type: 'graphiti/get-pending-publications' }
+  | { type: 'graphiti/retry-pending-publication'; id: string }
+  | { type: 'graphiti/cancel-pending-publication'; id: string };
 
 export interface PubkySessionPayload {
   id: string;
@@ -35,6 +45,8 @@ export type BackgroundResponse =
   | { type: 'graphiti/bookmark-saved'; bookmark: BookmarkEntry }
   | { type: 'graphiti/bookmark-deleted'; id: string }
   | { type: 'graphiti/tag-history'; tags: string[] }
+  | { type: 'graphiti/status'; status: GraphitiStatusSnapshot }
+  | { type: 'graphiti/pending-publications'; pending: PendingPublication[] }
   | { type: 'error'; error: string };
 
 export interface RuntimeAuthEvent {
@@ -53,4 +65,19 @@ export interface RuntimeBookmarksEvent {
   bookmarks: BookmarkEntry[];
 }
 
-export type RuntimeEvent = RuntimeAuthEvent | RuntimeFeedEvent | RuntimeBookmarksEvent;
+export interface RuntimePendingEvent {
+  type: 'graphiti/pending-publications-updated';
+  pending: PendingPublication[];
+}
+
+export interface RuntimeStatusEvent {
+  type: 'graphiti/status-updated';
+  status: GraphitiStatusSnapshot;
+}
+
+export type RuntimeEvent =
+  | RuntimeAuthEvent
+  | RuntimeFeedEvent
+  | RuntimeBookmarksEvent
+  | RuntimePendingEvent
+  | RuntimeStatusEvent;
