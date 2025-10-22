@@ -63,10 +63,12 @@ function App() {
       logger.info('App', 'Handling bookmark', { url: currentUrl });
 
       // Check if already bookmarked
-      const isBookmarked = await storage.isBookmarked(currentUrl);
-      if (isBookmarked) {
-        // Delete bookmark from homeserver first
-        await pubkyAPISDK.deleteBookmark(currentUrl);
+      const existingBookmark = await storage.getBookmark(currentUrl);
+      if (existingBookmark) {
+        // Delete bookmark from homeserver first using the post URI
+        if (existingBookmark.postUri) {
+          await pubkyAPISDK.deleteBookmark(existingBookmark.postUri);
+        }
         
         // Then remove from local storage
         await storage.removeBookmark(currentUrl);
@@ -74,19 +76,21 @@ function App() {
         alert('Bookmark removed!');
       } else {
         // Create bookmark on homeserver using SDK
-        const { fullPath, bookmarkId } = await pubkyAPISDK.createBookmark(currentUrl);
+        // This creates a post first, then bookmarks it
+        const { fullPath, bookmarkId, postUri } = await pubkyAPISDK.createBookmark(currentUrl);
 
-        // Save locally with bookmark ID
+        // Save locally with bookmark ID and post URI
         const bookmark: StoredBookmark = {
           url: currentUrl,
           title: currentTitle,
           timestamp: Date.now(),
           pubkyUrl: fullPath,
           bookmarkId,
+          postUri,
         };
         await storage.saveBookmark(bookmark);
 
-        logger.info('App', 'Bookmark created successfully', { fullPath, bookmarkId });
+        logger.info('App', 'Bookmark created successfully', { fullPath, bookmarkId, postUri });
         alert('Bookmarked!');
       }
     } catch (error) {

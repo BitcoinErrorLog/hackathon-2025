@@ -58,22 +58,58 @@ class PubkyAPISDK {
 
   /**
    * Create a bookmark on the homeserver using SDK
+   * Bookmarks must point to Pubky content (posts), so we:
+   * 1. Create a link post with the HTTP URL
+   * 2. Bookmark that post URI (not the HTTP URL)
    */
-  async createBookmark(url: string): Promise<{ fullPath: string; bookmarkId: string }> {
+  async createBookmark(url: string): Promise<{ fullPath: string; bookmarkId: string; postUri: string }> {
     try {
       const session = await this.getAuthenticatedSession();
-      logger.info('PubkyAPISDK', 'Creating bookmark', { url });
+      logger.info('PubkyAPISDK', 'Creating bookmark for URL', { url });
 
-      // Use official pubky-app-specs builder
-      const builder = new PubkySpecsBuilder(session.pubky);
-      const result = builder.createBookmark(url);
-      
-      const bookmark = result.bookmark.toJson();
-      const fullPath = result.meta.url;
-      const bookmarkId = result.meta.id;
-      
-      // Write to homeserver using SDK
       await this.ensurePubky();
+      const builder = new PubkySpecsBuilder(session.pubky);
+
+      // Step 1: Create a link post with the HTTP URL
+      logger.info('PubkyAPISDK', 'Creating link post first');
+      const postResult = builder.createPost(
+        url,  // content is the URL
+        PubkyAppPostKind.Link,
+        null,  // parent
+        null,  // embed
+        []     // attachments
+      );
+
+      const post = postResult.post.toJson();
+      const postUri = postResult.meta.url;
+
+      try {
+        const postResponse = await this.pubky.fetch(postUri, {
+          method: 'PUT',
+          body: JSON.stringify(post),
+          credentials: 'include',
+        });
+
+        if (!postResponse.ok) {
+          throw new Error(`Failed to create post: HTTP ${postResponse.status}`);
+        }
+
+        logger.info('PubkyAPISDK', 'Link post created', { 
+          postUri, 
+          postId: postResult.meta.id 
+        });
+      } catch (postError) {
+        logger.error('PubkyAPISDK', 'Failed to create link post', postError as Error);
+        throw postError;
+      }
+
+      // Step 2: Create bookmark pointing to the POST URI (not the HTTP URL)
+      logger.info('PubkyAPISDK', 'Creating bookmark for post', { postUri });
+      const bookmarkResult = builder.createBookmark(postUri);  // Bookmark the POST, not the URL!
+      
+      const bookmark = bookmarkResult.bookmark.toJson();
+      const fullPath = bookmarkResult.meta.url;
+      const bookmarkId = bookmarkResult.meta.id;
       
       try {
         const response = await this.pubky.fetch(fullPath, {
@@ -97,11 +133,11 @@ class PubkyAPISDK {
         
         logger.info('PubkyAPISDK', 'Bookmark written to homeserver successfully');
       } catch (writeError) {
-        logger.error('PubkyAPISDK', 'Failed to write to homeserver', writeError as Error);
+        logger.error('PubkyAPISDK', 'Failed to write bookmark to homeserver', writeError as Error);
         throw writeError;
       }
       
-      return { fullPath, bookmarkId };
+      return { fullPath, bookmarkId, postUri };
     } catch (error) {
       logger.error('PubkyAPISDK', 'Failed to create bookmark', error as Error);
       throw error;
@@ -110,15 +146,16 @@ class PubkyAPISDK {
 
   /**
    * Delete a bookmark from the homeserver using SDK
+   * @param postUri - The Pubky post URI that was bookmarked (not the HTTP URL)
    */
-  async deleteBookmark(url: string): Promise<void> {
+  async deleteBookmark(postUri: string): Promise<void> {
     try {
       const session = await this.getAuthenticatedSession();
-      logger.info('PubkyAPISDK', 'Deleting bookmark', { url });
+      logger.info('PubkyAPISDK', 'Deleting bookmark', { postUri });
 
-      // Use official pubky-app-specs builder to regenerate the same ID
+      // Use official pubky-app-specs builder to regenerate the bookmark ID from the post URI
       const builder = new PubkySpecsBuilder(session.pubky);
-      const result = builder.createBookmark(url);
+      const result = builder.createBookmark(postUri);  // Use post URI, not HTTP URL
       
       const fullPath = result.meta.url;
       

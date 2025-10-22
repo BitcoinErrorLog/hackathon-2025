@@ -16,8 +16,9 @@ export interface StoredBookmark {
   url: string;
   title: string;
   timestamp: number;
-  pubkyUrl?: string; // URL on homeserver after publishing
+  pubkyUrl?: string; // Bookmark URL on homeserver
   bookmarkId?: string; // Bookmark ID for deletion
+  postUri?: string; // The post URI that the bookmark points to
 }
 
 export interface StoredTag {
