@@ -15,27 +15,25 @@ When creating a post (bookmark or tagged post), the system:
 const urlBytes = encoder.encode(url);
 const hashBytes = await sha256(urlBytes);
 
-// Encode as UTF-16 characters (16 bits per char = 16 chars)
-let utf16Chars = '';
-for (let i = 0; i < hashBytes.length; i += 2) {
-  const charCode = (hashBytes[i] << 8) | hashBytes[i + 1];
-  // Skip surrogate range (0xD800-0xDFFF) for valid UTF-16
-  let safeCharCode = charCode;
-  if (charCode >= 0xD800 && charCode <= 0xDFFF) {
-    safeCharCode = 0xE000 + (charCode - 0xD800);
-  }
-  utf16Chars += String.fromCharCode(safeCharCode);
-}
+// Take first 14 bytes (112 bits) for compression
+const truncatedHash = hashBytes.slice(0, 14);
 
-// Create hash tag with 'ū' prefix (17 chars total)
-const urlHashTag = `ū${utf16Chars}`;
+// Encode as base64url (19 chars)
+let base64url = base64UrlEncode(truncatedHash);
+
+// Lowercase for Pubky tag compatibility
+base64url = base64url.toLowerCase();
+
+// Prefix with 'u' to identify as URL hash (20 chars total)
+const urlHashTag = `u${base64url}`;
 ```
 
 **Example:**
 ```
 URL: https://pubky.app
-Hash Tag: ū㼅ꚡ䕁䙽䐇⬲贍䔎㥙䱠࿺ᆌᜱ鱛䱦㼇
-Length: 17 characters (within 20-char limit)
+Hash Tag: up8wkqecvk9bwct-p4hw
+Length: 20 characters (exact 20-char limit)
+Character set: a-z, 0-9, -, _ (lowercase alphanumeric, URL-safe)
 ```
 
 ### 2. Automatic Tag Addition
@@ -44,8 +42,8 @@ Every link post automatically gets this hash tag:
 
 ```typescript
 // User tags: ["tech", "cool"]
-// System adds: "ū㼅ꚡ䕁䙽䐇⬲贍䔎㥙䱠࿺ᆌᜱ鱛䱦㼇"
-// Final tags: ["tech", "cool", "ū㼅ꚡ䕁䙽䐇⬲贍䔎㥙䱠࿺ᆌᜱ鱛䱦㼇"]
+// System adds: "up8wkqecvk9bwct-p4hw"
+// Final tags: ["tech", "cool", "up8wkqecvk9bwct-p4hw"]
 ```
 
 **Applied To:**
@@ -177,36 +175,31 @@ export async function generateUrlHashTag(url: string): Promise<string> {
   const encoder = new TextEncoder();
   const urlBytes = encoder.encode(url);
   
-  // SHA-256 hash (32 bytes)
+  // SHA-256 hash (32 bytes = 256 bits)
   const hashBytes = await sha256(urlBytes);
   
-  // Encode as UTF-16 characters for compression
-  // Each pair of bytes becomes one UTF-16 character (16 bits)
-  let utf16Chars = '';
-  for (let i = 0; i < hashBytes.length; i += 2) {
-    const charCode = (hashBytes[i] << 8) | hashBytes[i + 1];
-    
-    // Skip surrogate pair range (0xD800-0xDFFF) for valid UTF-16
-    let safeCharCode = charCode;
-    if (charCode >= 0xD800 && charCode <= 0xDFFF) {
-      safeCharCode = 0xE000 + (charCode - 0xD800);
-    }
-    
-    utf16Chars += String.fromCharCode(safeCharCode);
-  }
+  // Take first 14 bytes (112 bits) for compression
+  const truncatedHash = hashBytes.slice(0, 14);
   
-  // Prefix with 'ū' marker (17 chars total, within 20-char limit)
-  return `ū${utf16Chars}`;
+  // Encode as base64url (19 chars: A-Z, a-z, 0-9, -, _)
+  let base64url = base64UrlEncode(truncatedHash);
+  
+  // Lowercase for Pubky tag compatibility
+  base64url = base64url.toLowerCase();
+  
+  // Prefix with 'u' marker (total 20 chars exactly)
+  return `u${base64url}`;
 }
 ```
 
-**Why UTF-16 Encoding?**
+**Why Base64url Encoding?**
 
-1. **Compression:** 32 bytes → 16 characters + 1 prefix = 17 chars (vs 68 for hex)
-2. **Tag Limit:** Pubky tags have a 20-character limit
-3. **Entropy:** Full UTF-16 range (0x0000-0xFFFF) provides maximum collision resistance
-4. **Deterministic:** Same URL always produces the same hash
-5. **Valid UTF-16:** Avoids surrogate pair range for proper string handling
+1. **Compression:** 14 bytes → 19 chars + 1 prefix = 20 chars (exact limit)
+2. **Tag Compatibility:** Pubky tags normalize to lowercase alphanumeric
+3. **URL-Safe:** Uses only `a-z`, `0-9`, `-`, `_` characters
+4. **Collision Resistance:** 2^112 ≈ 5×10^33 possible hashes
+5. **Birthday Paradox:** Collisions expected at ~2^56 ≈ 72 quadrillion URLs
+6. **Deterministic:** Same URL always produces the same hash
 
 ### Tag Creation (`pubky-api-sdk.ts`)
 
@@ -299,11 +292,12 @@ async searchPostsByTag(tag: string, options: {
 
 ```
 // Test that different URL formats generate different hashes
-https://pubky.app     → ū㼅ꚡ䕁䙽䐇⬲贍䔎㥙䱠࿺ᆌᜱ鱛䱦㼇
-https://pubky.app/    → ū[different UTF-16 chars]
+https://pubky.app     → up8wkqecvk9bwct-p4hw
+https://pubky.app/    → u[different base64url chars]
 
 // Each exact URL gets its own unique hash
-// Verify length is always 17 characters
+// Verify length is always exactly 20 characters
+// Verify only contains: a-z, 0-9, -, _
 ```
 
 ### 4. Check Following Filter
@@ -338,12 +332,12 @@ function normalizeUrl(url: string): string {
 
 ### Tag Prefix Customization
 
-Could use different UTF-16 prefixes for different types:
+Could use different prefixes for different hash types:
 
 ```typescript
-ū[hash]    // URL hash (current)
-ŭ[hash]    // Domain-only hash
-ŷ[hash]    // Path-only hash
+u[hash]    // URL hash (current)
+d[hash]    // Domain-only hash  
+p[hash]    // Path-only hash
 ```
 
 ### Batch Tag Queries
@@ -358,8 +352,9 @@ searchPostsByTags([urlHashTag, domainHashTag])
 ## Summary
 
 ✅ **Deterministic:** Same URL = same hash = same tag  
-✅ **Compact:** 17 chars (well within 20-char limit)  
-✅ **Collision-Resistant:** Full UTF-16 entropy (65,536 chars/position)  
+✅ **Exact Fit:** 20 chars (exact tag limit)  
+✅ **Collision-Resistant:** 2^112 entropy (~72 quadrillion URLs to collision)  
+✅ **Tag-Compatible:** Lowercase alphanumeric (a-z, 0-9, -, _)  
 ✅ **Automatic:** No manual work - system adds hash  
 ✅ **Efficient:** Indexed tag search via Nexus  
 ✅ **Social:** Only shows posts from your network  
