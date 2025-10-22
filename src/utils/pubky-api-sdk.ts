@@ -2,6 +2,7 @@ import { logger } from './logger';
 import { storage } from './storage';
 import { nexusClient, NexusPost } from './nexus-client';
 import { PubkySpecsBuilder, PubkyAppPostKind } from 'pubky-app-specs';
+import { generateUrlHashTag } from './crypto';
 
 /**
  * Pubky API using official SDK for homeserver operations
@@ -101,6 +102,16 @@ class PubkyAPISDK {
       } catch (postError) {
         logger.error('PubkyAPISDK', 'Failed to create link post', postError as Error);
         throw postError;
+      }
+
+      // Add URL hash tag to the post for Nexus querying
+      const urlHashTag = await generateUrlHashTag(url);
+      logger.info('PubkyAPISDK', 'Adding URL hash tag to bookmark post', { urlHashTag });
+      
+      try {
+        await this.createTags(postUri, [urlHashTag]);
+      } catch (tagError) {
+        logger.warn('PubkyAPISDK', 'Failed to add URL hash tag to post', tagError as Error);
       }
 
       // Step 2: Create bookmark pointing to the POST URI (not the HTTP URL)
@@ -256,6 +267,7 @@ class PubkyAPISDK {
         await this.pubky.fetch(fullPath, {
           method: 'PUT',
           body: JSON.stringify(post),
+          credentials: 'include',
         });
         
         logger.info('PubkyAPISDK', 'Post written to homeserver', { 
@@ -267,12 +279,27 @@ class PubkyAPISDK {
         logger.warn('PubkyAPISDK', `Failed to write post to homeserver: ${(writeError as Error).message}`);
       }
 
-      // Also create tags for the post
-      if (tags.length > 0) {
-        await this.createTags(fullPath, tags);
+      // Generate URL hash tag for Nexus querying
+      const urlHashTag = await generateUrlHashTag(url);
+      
+      // Combine user tags with the URL hash tag
+      const allTags = [...tags, urlHashTag];
+      
+      logger.info('PubkyAPISDK', 'Adding tags including URL hash', { 
+        userTags: tags, 
+        urlHashTag,
+        totalTags: allTags.length 
+      });
+
+      // Create all tags for the post (including URL hash)
+      if (allTags.length > 0) {
+        await this.createTags(fullPath, allTags);
       }
 
-      logger.info('PubkyAPISDK', 'Link post created', { postUrl: fullPath });
+      logger.info('PubkyAPISDK', 'Link post created with URL hash tag', { 
+        postUrl: fullPath,
+        urlHashTag 
+      });
       return fullPath;
     } catch (error) {
       logger.error('PubkyAPISDK', 'Failed to create link post', error as Error);
@@ -327,12 +354,24 @@ class PubkyAPISDK {
 
   /**
    * Search for posts containing a specific URL using Nexus API
+   * Uses URL hash tag to find posts from contacts about this URL
    */
   async searchPostsByUrl(url: string, viewerId?: string): Promise<NexusPost[]> {
     try {
       logger.info('PubkyAPISDK', 'Searching posts by URL via Nexus', { url });
-      const posts = await nexusClient.searchPostsByUrl(url, viewerId);
-      logger.info('PubkyAPISDK', 'Found posts', { count: posts.length });
+      
+      // Generate the URL hash tag to search for
+      const urlHashTag = await generateUrlHashTag(url);
+      logger.info('PubkyAPISDK', 'Searching by URL hash tag', { urlHashTag });
+      
+      // Search posts by the URL hash tag
+      const posts = await nexusClient.searchPostsByTag(urlHashTag, {
+        observer_id: viewerId,
+        limit: 50,
+        sorting: 'latest'
+      });
+      
+      logger.info('PubkyAPISDK', 'Found posts with URL hash tag', { count: posts.length });
       return posts;
     } catch (error) {
       logger.error('PubkyAPISDK', 'Failed to search posts', error as Error);

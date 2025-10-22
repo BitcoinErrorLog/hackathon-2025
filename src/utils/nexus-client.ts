@@ -140,16 +140,18 @@ class NexusClient {
    * Search posts by tag
    */
   async searchPostsByTag(tag: string, options: {
+    observer_id?: string;
     sorting?: 'latest' | 'oldest';
     start?: number;
     end?: number;
     skip?: number;
     limit?: number;
-  } = {}): Promise<PostsStreamResponse> {
+  } = {}): Promise<NexusPost[]> {
     try {
       let url = `${this.apiUrl}/v0/search/posts/by_tag/${encodeURIComponent(tag)}`;
 
       const params = new URLSearchParams();
+      if (options.observer_id) params.append('observer_id', options.observer_id);
       if (options.sorting) params.append('sorting', options.sorting);
       if (options.start !== undefined) params.append('start', options.start.toString());
       if (options.end !== undefined) params.append('end', options.end.toString());
@@ -166,7 +168,8 @@ class NexusClient {
       const data = await response.json();
       logger.info('NexusClient', 'Posts search complete', { tag, count: data.data?.length || 0 });
       
-      return data;
+      // Return just the posts array
+      return data.data || [];
     } catch (error) {
       logger.error('NexusClient', 'Failed to search posts by tag', error as Error, { tag });
       throw error;

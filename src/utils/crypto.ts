@@ -128,3 +128,32 @@ export function parseAuthToken(tokenBytes: Uint8Array): AuthToken {
   }
 }
 
+/**
+ * Generate a URL hash tag for Nexus querying
+ * Creates a UTF-16 encoded SHA-256 hash of the URL
+ * This allows finding all posts about the same URL by searching this tag
+ */
+export async function generateUrlHashTag(url: string): Promise<string> {
+  try {
+    // Encode the URL as UTF-16
+    const encoder = new TextEncoder();
+    const urlBytes = encoder.encode(url);
+    
+    // Generate SHA-256 hash
+    const hashBytes = await sha256(urlBytes);
+    
+    // Convert to hex string
+    const hashHex = bytesToHex(hashBytes);
+    
+    // Prefix with 'url:' to identify it as a URL hash tag
+    const hashTag = `url:${hashHex}`;
+    
+    logger.debug('Crypto', 'Generated URL hash tag', { url, hashTag });
+    
+    return hashTag;
+  } catch (error) {
+    logger.error('Crypto', 'Failed to generate URL hash tag', error as Error);
+    throw error;
+  }
+}
+
