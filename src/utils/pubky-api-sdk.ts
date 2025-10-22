@@ -364,10 +364,27 @@ class PubkyAPISDK {
       const urlHashTag = await generateUrlHashTag(url);
       logger.info('PubkyAPISDK', 'Searching by URL hash tag', { urlHashTag });
       
-      // Query with source='all' to search across all posts
-      logger.debug('PubkyAPISDK', 'Querying streamPosts with tags and source=all');
+      // First, try getting own posts to verify tag exists
+      if (viewerId) {
+        logger.debug('PubkyAPISDK', 'Checking own author posts for debugging');
+        const authorResponse = await nexusClient.streamPosts({
+          source: 'author',
+          author_id: viewerId,
+          limit: 10
+        });
+        logger.info('PubkyAPISDK', 'Own recent posts', {
+          count: authorResponse.data?.length || 0,
+          posts: authorResponse.data?.map(p => ({
+            id: p.id,
+            content: p.content?.substring(0, 50),
+            tags: p.tags
+          }))
+        });
+      }
+      
+      // Try without source parameter - maybe it conflicts with tags
+      logger.debug('PubkyAPISDK', 'Querying streamPosts with tags only (no source)');
       const response = await nexusClient.streamPosts({
-        source: 'all',
         tags: urlHashTag,
         limit: 50
       });

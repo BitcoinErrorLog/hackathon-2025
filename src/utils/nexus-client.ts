@@ -127,9 +127,17 @@ class NexusClient {
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       
       const data = await response.json();
-      logger.info('NexusClient', 'Posts stream fetched', { count: data.data?.length || 0 });
       
-      return data;
+      // Handle different response formats:
+      // - With tags parameter: returns array directly
+      // - Without tags: returns { data: [...], cursor: ... }
+      const normalizedData = Array.isArray(data) 
+        ? { data, cursor: undefined } 
+        : data;
+      
+      logger.info('NexusClient', 'Posts stream fetched', { count: normalizedData.data?.length || 0 });
+      
+      return normalizedData;
     } catch (error) {
       logger.error('NexusClient', 'Failed to stream posts', error as Error, { options });
       throw error;
