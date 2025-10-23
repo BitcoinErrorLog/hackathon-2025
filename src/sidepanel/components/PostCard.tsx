@@ -5,6 +5,17 @@ interface PostCardProps {
 }
 
 function PostCard({ post }: PostCardProps) {
+  // Handle nested details structure from Nexus
+  const details = post.details || {
+    id: post.id || '',
+    author: post.author_id || '',
+    content: post.content || '',
+    kind: post.kind || 'short',
+    uri: post.uri || '',
+    indexed_at: post.indexed_at || 0,
+    attachments: post.attachments || []
+  };
+
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -55,22 +66,22 @@ function PostCard({ post }: PostCardProps) {
           )}
           <div>
             <p className="font-semibold text-sm text-gray-800">
-              {post.author?.name || formatAuthorId(post.author_id)}
+              {post.author?.name || formatAuthorId(details.author)}
             </p>
             <p className="text-xs text-gray-500">
-              {formatDate(post.indexed_at)}
+              {formatDate(details.indexed_at)}
             </p>
           </div>
         </div>
-        <span className="text-xl" title={post.kind}>
-          {getKindIcon(post.kind)}
+        <span className="text-xl" title={details.kind}>
+          {getKindIcon(details.kind)}
         </span>
       </div>
 
       {/* Content */}
       <div className="mb-3">
         <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
-          {post.content}
+          {details.content}
         </p>
       </div>
 
@@ -87,9 +98,9 @@ function PostCard({ post }: PostCardProps) {
       )}
 
       {/* Attachments */}
-      {post.attachments && post.attachments.length > 0 && (
+      {details.attachments && details.attachments.length > 0 && (
         <div className="space-y-2 mb-3">
-          {post.attachments.map((attachment, idx) => (
+          {details.attachments.map((attachment, idx) => (
             <div 
               key={idx}
               className="bg-blue-50 border border-blue-200 rounded p-2"
@@ -105,7 +116,7 @@ function PostCard({ post }: PostCardProps) {
       {/* Footer */}
       <div className="flex items-center justify-between text-xs text-gray-500 pt-3 border-t border-gray-100">
         <a
-          href={post.uri}
+          href={details.uri}
           target="_blank"
           rel="noopener noreferrer"
           className="hover:text-blue-600 transition"
@@ -113,7 +124,7 @@ function PostCard({ post }: PostCardProps) {
           View on Pubky →
         </a>
         <span className="font-mono text-[10px]">
-          {formatAuthorId(post.id)}
+          {formatAuthorId(details.id)}
         </span>
       </div>
     </div>

@@ -148,7 +148,7 @@ function App() {
         ) : (
           <div className="space-y-4">
             {posts.map((post) => (
-              <PostCard key={post.id} post={post} />
+              <PostCard key={post.details?.id || post.id || Math.random().toString()} post={post} />
             ))}
           </div>
         )}

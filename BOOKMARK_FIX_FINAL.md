@@ -185,3 +185,5 @@ After reloading the extension:
 
 Bookmarks now work exactly as designed in the Pubky ecosystem! 🎉
 
+
+

@@ -8,12 +8,35 @@ import { logger } from './logger';
 const NEXUS_API_URL = 'https://nexus.pubky.app';
 
 export interface NexusPost {
-  id: string;
-  author_id: string;
-  content: string;
-  kind: string;
-  uri: string;
-  indexed_at: number;
+  details: {
+    id: string;
+    author: string;
+    content: string;
+    kind: string;
+    uri: string;
+    indexed_at: number;
+    attachments?: string[];
+  };
+  counts?: {
+    tags?: number;
+    replies?: number;
+    reposts?: number;
+  };
+  tags?: Array<{
+    label: string;
+    taggers: string[];
+    taggers_count: number;
+    relationship: boolean;
+  }>;
+  relationships?: any;
+  bookmark?: any;
+  // Legacy flat format support (for backwards compatibility)
+  id?: string;
+  author_id?: string;
+  content?: string;
+  kind?: string;
+  uri?: string;
+  indexed_at?: number;
   attachments?: string[];
   embed?: {
     kind: string;
@@ -25,8 +48,6 @@ export interface NexusPost {
     bio?: string;
     image?: string;
   };
-  tags?: string[];
-  taggers?: string[];
 }
 
 export interface NexusUser {
@@ -252,9 +273,12 @@ class NexusClient {
       // Remove duplicates by URI
       const uniquePosts = new Map<string, NexusPost>();
       for (const post of allPosts) {
-        if (post.content?.includes(url) || 
-            post.attachments?.some(attachment => attachment.includes(url))) {
-          uniquePosts.set(post.uri, post);
+        const content = post.details?.content || post.content || '';
+        const attachments = post.details?.attachments || post.attachments || [];
+        const uri = post.details?.uri || post.uri || '';
+        
+        if (content.includes(url) || attachments.some(attachment => attachment.includes(url))) {
+          uniquePosts.set(uri, post);
         }
       }
 
