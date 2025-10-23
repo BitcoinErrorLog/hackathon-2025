@@ -56,13 +56,13 @@ function AuthView({ onAuthSuccess }: AuthViewProps) {
   if (qrData) {
     return (
       <div className="text-center">
-        <h2 className="text-lg font-semibold mb-2 text-gray-800">Sign in with Pubky Ring</h2>
-        <p className="text-sm text-gray-600 mb-4">
+        <h2 className="text-lg font-semibold mb-2 text-white">Sign in with Pubky Ring</h2>
+        <p className="text-sm text-gray-400 mb-4">
           Scan this QR code with your Pubky Ring app to sign in
         </p>
 
         {/* QR Code */}
-        <div className="bg-white p-4 rounded-lg shadow-md inline-block mb-4">
+        <div className="bg-white p-4 rounded-lg inline-block mb-4">
           <img 
             src={qrData.qrDataUrl} 
             alt="QR Code" 
@@ -72,14 +72,14 @@ function AuthView({ onAuthSuccess }: AuthViewProps) {
 
         {/* Waiting indicator */}
         <div className="flex items-center justify-center mb-4">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></div>
-          <span className="text-sm text-gray-600">Waiting for authentication...</span>
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-2"></div>
+          <span className="text-sm text-gray-400">Waiting for authentication...</span>
         </div>
 
         {/* Cancel button */}
         <button
           onClick={handleCancel}
-          className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded transition"
+          className="px-4 py-2 bg-[#2A2A2A] hover:bg-[#333333] text-gray-300 rounded transition"
         >
           Cancel
         </button>
@@ -93,18 +93,18 @@ function AuthView({ onAuthSuccess }: AuthViewProps) {
         <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
           <span className="text-4xl">🔗</span>
         </div>
-        <h2 className="text-xl font-bold text-gray-800 mb-2">
+        <h2 className="text-xl font-bold text-white mb-2">
           Welcome to Graphiti
         </h2>
-        <p className="text-sm text-gray-600 max-w-xs mx-auto">
+        <p className="text-sm text-gray-400 max-w-xs mx-auto">
           Tag and bookmark URLs to your Pubky homeserver. 
           Discover what your network is sharing about the pages you visit.
         </p>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">⚠️ {error}</p>
+        <div className="mb-4 p-3 bg-red-900/30 border border-red-700/50 rounded-lg">
+          <p className="text-sm text-red-400">⚠️ {error}</p>
         </div>
       )}
 

@@ -8,7 +8,7 @@ interface MainViewProps {
   currentTitle: string;
   onSignOut: () => void;
   onBookmark: () => void;
-  onTag: (tags: string[]) => void;
+  onPost: (content: string, tags: string[]) => void;
   onOpenSidePanel: () => void;
 }
 
@@ -18,12 +18,15 @@ function MainView({
   currentTitle,
   onSignOut,
   onBookmark,
-  onTag,
+  onPost,
   onOpenSidePanel,
 }: MainViewProps) {
+  const [postContent, setPostContent] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [existingTags, setExistingTags] = useState<string[]>([]);
   const [isBookmarked, setIsBookmarked] = useState(false);
+
+  const MAX_CONTENT_LENGTH = 1000;
 
   useEffect(() => {
     loadExistingData();
@@ -45,10 +48,14 @@ function MainView({
     }
   };
 
-  const handleTagSubmit = (e: React.FormEvent) => {
+  const handlePostSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!tagInput.trim()) return;
+    // Must have either content or tags
+    if (!postContent.trim() && !tagInput.trim()) {
+      alert('Please enter post content or tags');
+      return;
+    }
 
     // Parse tags (comma or space separated)
     const tags = tagInput
@@ -56,16 +63,19 @@ function MainView({
       .map(t => t.trim().toLowerCase())
       .filter(t => t.length > 0 && t.length <= 20);
 
-    if (tags.length === 0) {
+    if (tagInput.trim() && tags.length === 0) {
       alert('Please enter valid tags (max 20 characters each)');
       return;
     }
 
-    onTag(tags);
+    onPost(postContent, tags);
+    setPostContent('');
     setTagInput('');
     
     // Update existing tags
-    setExistingTags(prev => [...new Set([...prev, ...tags])]);
+    if (tags.length > 0) {
+      setExistingTags(prev => [...new Set([...prev, ...tags])]);
+    }
   };
 
   const handleBookmarkClick = async () => {
@@ -85,19 +95,19 @@ function MainView({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* User Info */}
-      <div className="bg-white rounded-lg p-4 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <div>
+      <div className="bg-[#1F1F1F] border border-[#3F3F3F] rounded-lg p-3">
+        <div className="flex items-center justify-between">
+          <div className="min-w-0 flex-1">
             <p className="text-xs text-gray-500">Signed in as</p>
-            <p className="font-mono text-sm text-gray-800" title={session.pubky}>
+            <p className="font-mono text-sm text-white truncate" title={session.pubky}>
               {formatPubky(session.pubky)}
             </p>
           </div>
           <button
             onClick={onSignOut}
-            className="px-3 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-600 rounded transition"
+            className="px-3 py-1 text-xs bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded transition ml-2 flex-shrink-0"
           >
             Sign Out
           </button>
@@ -105,9 +115,9 @@ function MainView({
       </div>
 
       {/* Current Page */}
-      <div className="bg-white rounded-lg p-4 shadow-sm">
-        <h3 className="text-sm font-semibold text-gray-700 mb-2">Current Page</h3>
-        <p className="text-sm font-medium text-gray-800 mb-1">
+      <div className="bg-[#1F1F1F] border border-[#3F3F3F] rounded-lg p-3">
+        <h3 className="text-sm font-semibold text-gray-400 mb-2">Current Page</h3>
+        <p className="text-sm font-medium text-white mb-1">
           {truncate(currentTitle, 50)}
         </p>
         <p className="text-xs text-gray-500 break-all">
@@ -116,37 +126,37 @@ function MainView({
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-lg p-4 shadow-sm">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Actions</h3>
+      <div className="bg-[#1F1F1F] border border-[#3F3F3F] rounded-lg p-3">
+        <h3 className="text-sm font-semibold text-gray-400 mb-3">Quick Actions</h3>
         
         <div className="space-y-2">
           {/* Bookmark */}
           <button
             onClick={handleBookmarkClick}
-            className={`w-full px-4 py-2 rounded-lg font-medium transition flex items-center justify-center ${
+            className={`w-full px-4 py-2 rounded-lg font-medium transition flex items-center justify-center text-sm ${
               isBookmarked
-                ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100 border border-yellow-200'
-                : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                ? 'bg-yellow-900/30 text-yellow-400 hover:bg-yellow-900/50 border border-yellow-700/50'
+                : 'bg-blue-900/30 text-blue-400 hover:bg-blue-900/50 border border-blue-700/50'
             }`}
           >
             <span className="mr-2">{isBookmarked ? '⭐' : '☆'}</span>
-            {isBookmarked ? 'Remove Bookmark' : 'Bookmark This Page'}
+            {isBookmarked ? 'Bookmarked' : 'Bookmark Page'}
           </button>
 
           {/* View Feed */}
           <button
             onClick={onOpenSidePanel}
-            className="w-full px-4 py-2 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg font-medium transition flex items-center justify-center"
+            className="w-full px-4 py-2 bg-purple-900/30 text-purple-400 hover:bg-purple-900/50 border border-purple-700/50 rounded-lg font-medium transition flex items-center justify-center text-sm"
           >
             <span className="mr-2">📱</span>
-            View Feed for This URL
+            View Feed
           </button>
         </div>
       </div>
 
-      {/* Post & Tag */}
-      <div className="bg-white rounded-lg p-4 shadow-sm">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Share & Tag This Page</h3>
+      {/* Create Post */}
+      <div className="bg-[#1F1F1F] border border-[#3F3F3F] rounded-lg p-3">
+        <h3 className="text-sm font-semibold text-gray-400 mb-3">Create Post</h3>
         
         {existingTags.length > 0 && (
           <div className="mb-3">
@@ -155,7 +165,7 @@ function MainView({
               {existingTags.map((tag) => (
                 <span
                   key={tag}
-                  className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full"
+                  className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded-lg"
                 >
                   #{tag}
                 </span>
@@ -164,26 +174,48 @@ function MainView({
           </div>
         )}
 
-        <form onSubmit={handleTagSubmit} className="space-y-2">
+        <form onSubmit={handlePostSubmit} className="space-y-2">
+          {/* Post Content */}
+          <div>
+            <textarea
+              value={postContent}
+              onChange={(e) => setPostContent(e.target.value.slice(0, MAX_CONTENT_LENGTH))}
+              placeholder="What's on your mind? (optional)"
+              className="w-full px-3 py-2 bg-[#2A2A2A] border border-[#3F3F3F] rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              rows={4}
+              maxLength={MAX_CONTENT_LENGTH}
+            />
+            <div className="flex justify-between items-center mt-1">
+              <p className="text-xs text-gray-500">
+                URL will be added automatically
+              </p>
+              <span className={`text-xs ${postContent.length > MAX_CONTENT_LENGTH * 0.9 ? 'text-yellow-500' : 'text-gray-500'}`}>
+                {postContent.length}/{MAX_CONTENT_LENGTH}
+              </span>
+            </div>
+          </div>
+
+          {/* Tags */}
           <input
             type="text"
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
-            placeholder="Enter tags (comma or space separated)"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Tags (comma or space separated)"
+            className="w-full px-3 py-2 bg-[#2A2A2A] border border-[#3F3F3F] rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             maxLength={100}
           />
+          
           <button
             type="submit"
-            disabled={!tagInput.trim()}
-            className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!postContent.trim() && !tagInput.trim()}
+            className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
-            Post with Tags
+            {postContent.trim() ? 'Create Post' : 'Tag URL'}
           </button>
         </form>
 
         <p className="text-xs text-gray-500 mt-2">
-          Creates a link post with tags on your homeserver. Tags help organize and discover content. Max 20 characters per tag.
+          Posts are published to your Pubky homeserver and tagged for discovery.
         </p>
       </div>
     </div>

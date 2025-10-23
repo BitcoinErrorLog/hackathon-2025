@@ -353,6 +353,20 @@ class PubkyAPISDK {
   }
 
   /**
+   * Check if a post is deleted
+   * Deleted posts have their content replaced with "[DELETED]"
+   */
+  private isPostDeleted(post: NexusPost): boolean {
+    // Check if content is exactly "[DELETED]"
+    const content = post.details?.content || post.content || '';
+    if (content === '[DELETED]') {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
    * Search for posts containing a specific URL using Nexus API
    * Uses URL hash tag to find posts from contacts about this URL
    */
@@ -382,18 +396,55 @@ class PubkyAPISDK {
         });
       }
       
-      // Try without source parameter - maybe it conflicts with tags
-      logger.debug('PubkyAPISDK', 'Querying streamPosts with tags only (no source)');
+      // Query ALL posts with this tag (not just from contacts/following)
+      // By not specifying a 'source' parameter, we search the entire Nexus network
+      // Include viewer_id to get enriched posts with author profile information
+      logger.info('PubkyAPISDK', 'Querying ALL posts with URL hash tag (not just contacts)', { urlHashTag });
       const response = await nexusClient.streamPosts({
         tags: urlHashTag,
-        limit: 50
+        limit: 50,
+        viewer_id: viewerId // Include viewer to get author profile data
       });
       
-      const posts = response.data || [];
+      const allPosts = response.data || [];
+      
+      // Log details about posts to understand deletion pattern
+      const deletedPosts = allPosts.filter(post => this.isPostDeleted(post));
+      if (deletedPosts.length > 0) {
+        logger.info('PubkyAPISDK', 'Found deleted posts (will be filtered)', {
+          deletedCount: deletedPosts.length,
+          deletedPostsDetails: deletedPosts.map(p => ({
+            id: p.details?.id || p.id,
+            hasDetails: !!p.details,
+            content: p.details?.content,
+            contentType: typeof p.details?.content,
+            contentIsNull: p.details?.content === null,
+            contentIsUndefined: p.details?.content === undefined,
+            deleted_at: p.deleted_at || p.details?.deleted_at,
+            author: p.details?.author || p.author_id
+          }))
+        });
+      }
+      
+      // Filter out deleted posts
+      const posts = allPosts.filter(post => !this.isPostDeleted(post));
+      
       logger.info('PubkyAPISDK', 'Found posts with URL hash tag', { 
-        count: posts.length,
-        viewerId,
-        source: 'all'
+        totalCount: allPosts.length,
+        filteredCount: posts.length,
+        deletedCount: allPosts.length - posts.length,
+        urlHashTag,
+        searchScope: 'ALL posts (entire network)',
+        posts: posts.map(p => ({
+          author: p.details?.author || p.author_id,
+          authorName: p.author?.name,
+          authorImage: p.author?.image,
+          authorImageType: p.author?.image ? typeof p.author.image : 'undefined',
+          hasAuthorProfile: !!p.author,
+          fullAuthor: p.author,
+          content: (p.details?.content || p.content || '').substring(0, 100),
+          id: p.details?.id || p.id
+        }))
       });
       
       return posts;

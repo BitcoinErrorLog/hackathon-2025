@@ -99,23 +99,28 @@ function App() {
     }
   };
 
-  const handleTag = async (tags: string[]) => {
+  const handlePost = async (content: string, tags: string[]) => {
     try {
       if (!session) return;
 
-      logger.info('App', 'Creating link post with tags', { url: currentUrl, tags });
+      logger.info('App', 'Creating post with content and tags', { content: content.substring(0, 50), tags, url: currentUrl });
 
-      // Create a link post with the URL and tags
+      // Append URL to content if content exists, otherwise just use URL
+      const fullContent = content.trim() 
+        ? `${content.trim()}\n\n${currentUrl}`
+        : currentUrl;
+
+      // Create a link post with the content and tags
       // This creates a proper Pubky App post with kind='link'
-      const postUrl = await pubkyAPISDK.createLinkPost(currentUrl, currentUrl, tags);
+      const postUrl = await pubkyAPISDK.createLinkPost(currentUrl, fullContent, tags);
 
       // Save locally
       await storage.saveTags(currentUrl, tags);
 
-      logger.info('App', 'Link post created successfully with tags', { postUrl, tags });
-      alert(`Posted and tagged with: ${tags.join(', ')}`);
+      logger.info('App', 'Post created successfully with content and tags', { postUrl, tags });
+      alert(content.trim() ? 'Posted!' : `Tagged with: ${tags.join(', ')}`);
     } catch (error) {
-      logger.error('App', 'Failed to create post with tags', error as Error);
+      logger.error('App', 'Failed to create post', error as Error);
       alert('Failed to create post. Check debug logs for details.');
     }
   };
@@ -127,30 +132,30 @@ function App() {
 
   if (loading) {
     return (
-      <div className="w-[400px] h-[500px] flex items-center justify-center bg-gray-50">
+      <div className="w-[400px] h-[500px] flex items-center justify-center bg-[#2B2B2B]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-[400px] min-h-[500px] bg-gray-50">
+    <div className="w-[400px] min-h-[500px] bg-[#2B2B2B]">
       {/* Header */}
-      <header className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4">
+      <header className="bg-[#1F1F1F] border-b border-[#3F3F3F] p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold">Graphiti</h1>
-            <p className="text-xs text-blue-100">Pubky URL Tagger</p>
+            <h1 className="text-xl font-bold text-white">Graphiti</h1>
+            <p className="text-xs text-gray-400">Pubky URL Tagger</p>
           </div>
           <button
             onClick={() => setShowDebug(!showDebug)}
-            className="px-3 py-1 text-xs bg-white/20 hover:bg-white/30 rounded transition"
+            className="px-3 py-1 text-xs bg-[#2A2A2A] hover:bg-[#333333] text-gray-300 rounded transition"
             title="Toggle debug panel"
           >
-            {showDebug ? '🔧 Hide Debug' : '🔧 Debug'}
+            {showDebug ? '🔧 Hide' : '🔧 Debug'}
           </button>
         </div>
       </header>
@@ -169,7 +174,7 @@ function App() {
             currentTitle={currentTitle}
             onSignOut={handleSignOut}
             onBookmark={handleBookmark}
-            onTag={handleTag}
+            onPost={handlePost}
             onOpenSidePanel={handleOpenSidePanel}
           />
         )}

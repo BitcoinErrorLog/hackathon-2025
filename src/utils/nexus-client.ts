@@ -16,6 +16,7 @@ export interface NexusPost {
     uri: string;
     indexed_at: number;
     attachments?: string[];
+    deleted_at?: number;  // Timestamp when post was deleted
   };
   counts?: {
     tags?: number;
@@ -30,6 +31,7 @@ export interface NexusPost {
   }>;
   relationships?: any;
   bookmark?: any;
+  deleted_at?: number;  // Timestamp when post was deleted (legacy format)
   // Legacy flat format support (for backwards compatibility)
   id?: string;
   author_id?: string;
@@ -147,7 +149,20 @@ class NexusClient {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       
-      const data = await response.json();
+      // Handle empty responses
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        logger.info('NexusClient', 'Empty response from API', { options });
+        return { data: [], cursor: undefined };
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        logger.error('NexusClient', 'Failed to parse response', parseError as Error, { text: text.substring(0, 100) });
+        return { data: [], cursor: undefined };
+      }
       
       // Handle different response formats:
       // - With tags parameter: returns array directly
@@ -194,7 +209,21 @@ class NexusClient {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       
-      const data = await response.json();
+      // Handle empty responses
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        logger.info('NexusClient', 'Empty response from API', { tag });
+        return [];
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        logger.error('NexusClient', 'Failed to parse response', parseError as Error, { text: text.substring(0, 100) });
+        return [];
+      }
+      
       logger.info('NexusClient', 'Posts search complete', { tag, count: data.data?.length || 0 });
       
       // Return just the posts array
