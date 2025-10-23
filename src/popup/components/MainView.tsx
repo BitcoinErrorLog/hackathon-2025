@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Session, storage } from '../../utils/storage';
 import { logger } from '../../utils/logger';
+import { getTagStyle } from '../../utils/tag-colors';
 
 interface MainViewProps {
   session: Session;
@@ -10,6 +11,7 @@ interface MainViewProps {
   onBookmark: () => void;
   onPost: (content: string, tags: string[]) => void;
   onOpenSidePanel: () => void;
+  onEditProfile: () => void;
 }
 
 function MainView({
@@ -20,6 +22,7 @@ function MainView({
   onBookmark,
   onPost,
   onOpenSidePanel,
+  onEditProfile,
 }: MainViewProps) {
   const [postContent, setPostContent] = useState('');
   const [tagInput, setTagInput] = useState('');
@@ -98,7 +101,7 @@ function MainView({
     <div className="space-y-3">
       {/* User Info */}
       <div className="bg-[#1F1F1F] border border-[#3F3F3F] rounded-lg p-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-2">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-gray-500">Signed in as</p>
             <p className="font-mono text-sm text-white truncate" title={session.pubky}>
@@ -112,6 +115,13 @@ function MainView({
             Sign Out
           </button>
         </div>
+        <button
+          onClick={onEditProfile}
+          className="w-full px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm font-medium rounded-lg transition flex items-center justify-center"
+        >
+          <span className="mr-2">✏️</span>
+          Edit Profile
+        </button>
       </div>
 
       {/* Current Page */}
@@ -162,14 +172,21 @@ function MainView({
           <div className="mb-3">
             <p className="text-xs text-gray-500 mb-2">Existing tags:</p>
             <div className="flex flex-wrap gap-2">
-              {existingTags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded-lg"
-                >
-                  #{tag}
-                </span>
-              ))}
+              {existingTags.map((tag) => {
+                const tagStyle = getTagStyle(tag);
+                return (
+                  <span
+                    key={tag}
+                    className="px-2 py-1 text-xs rounded-lg"
+                    style={{
+                      backgroundColor: tagStyle.backgroundColor,
+                      color: tagStyle.color
+                    }}
+                  >
+                    #{tag}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}

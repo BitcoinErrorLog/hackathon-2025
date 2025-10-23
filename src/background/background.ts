@@ -82,6 +82,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ success: true });
   }
 
+  if (message.type === 'OPEN_PUBKY_PROFILE') {
+    // Open profile renderer in new tab
+    openPubkyProfile(message.url);
+    sendResponse({ success: true });
+  }
+
   return true; // Keep message channel open for async response
 });
 
@@ -242,6 +248,37 @@ async function handleGetAnnotations(url: string): Promise<Annotation[]> {
     return [];
   }
 }
+
+/**
+ * Open a Pubky profile in the profile renderer
+ */
+function openPubkyProfile(url: string) {
+  logger.info('Background', 'Opening Pubky profile', { url });
+
+  // Get the extension's profile renderer URL
+  const rendererUrl = chrome.runtime.getURL(`src/profile/profile-renderer.html?url=${encodeURIComponent(url)}`);
+
+  // Open in new tab
+  chrome.tabs.create({
+    url: rendererUrl,
+  });
+}
+
+/**
+ * Handle navigation to pubky:// URLs in omnibox/address bar
+ */
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+  const url = details.url;
+  
+  // Check if it's a pubky:// URL
+  if (url.startsWith('pubky://') && details.frameId === 0) {
+    logger.info('Background', 'Intercepting pubky URL from omnibox', { url });
+    
+    // Cancel the navigation and open our profile renderer instead
+    // We can't cancel navigation directly, so we'll redirect
+    openPubkyProfile(url);
+  }
+});
 
 // Handle keyboard commands
 // NOTE: Must NOT use async/await here to preserve user gesture context

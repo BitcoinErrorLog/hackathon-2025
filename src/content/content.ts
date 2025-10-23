@@ -673,8 +673,296 @@ class AnnotationManager {
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     new AnnotationManager();
+    initPubkyURLHandler();
   });
 } else {
   new AnnotationManager();
+  initPubkyURLHandler();
 }
 
+/**
+ * Pubky URL Click Handler
+ * Intercepts clicks on pubky:// and pk:// URLs and opens them in profile renderer
+ */
+function initPubkyURLHandler() {
+  logger.info('ContentScript', 'Initializing Pubky URL handler');
+
+  // Inject styles for pubky links
+  injectPubkyLinkStyles();
+
+  // Find and linkify pubky URLs in text content
+  linkifyPubkyURLs();
+
+  // Observe DOM changes to linkify dynamically added content
+  observeDOMForPubkyURLs();
+
+  // Handle clicks on links
+  document.addEventListener('click', (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    
+    // Check if clicked element is a pubky link button
+    if (target.classList.contains('pubky-link-button') || target.closest('.pubky-link-button')) {
+      const button = target.classList.contains('pubky-link-button') 
+        ? target 
+        : target.closest('.pubky-link-button');
+      
+      const url = button?.getAttribute('data-pubky-url');
+      if (url) {
+        logger.info('ContentScript', 'Pubky URL clicked', { url });
+        event.preventDefault();
+        event.stopPropagation();
+        
+        chrome.runtime.sendMessage({
+          type: 'OPEN_PUBKY_PROFILE',
+          url,
+        });
+        return;
+      }
+    }
+    
+    // Check if clicked element or its parent is a link
+    let link: HTMLAnchorElement | null = null;
+    if (target.tagName === 'A') {
+      link = target as HTMLAnchorElement;
+    } else if (target.closest('a')) {
+      link = target.closest('a');
+    }
+
+    if (!link || !link.href) {
+      return;
+    }
+
+    // Check if it's a pubky:// URL (with or without //)
+    const url = link.href;
+    if (url.startsWith('pubky://') || url.startsWith('pubky:')) {
+      logger.info('ContentScript', 'Pubky URL clicked', { url });
+      
+      // Normalize URL to always have ://
+      const normalizedUrl = url.replace(/^pubky:(?!\/\/)/, 'pubky://');
+      
+      // Prevent default navigation
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Send message to background script to open profile renderer
+      chrome.runtime.sendMessage({
+        type: 'OPEN_PUBKY_PROFILE',
+        url: normalizedUrl,
+      });
+    }
+  }, true); // Use capture phase to intercept before other handlers
+
+  logger.info('ContentScript', 'Pubky URL handler initialized');
+}
+
+/**
+ * Inject styles for pubky link buttons
+ */
+function injectPubkyLinkStyles() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .pubky-link-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white !important;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none !important;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      border: none;
+      vertical-align: middle;
+    }
+    
+    .pubky-link-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+    }
+    
+    .pubky-link-button:active {
+      transform: translateY(0);
+    }
+    
+    .pubky-link-icon {
+      font-size: 16px;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+/**
+ * Find and linkify pubky URLs in the page
+ */
+function linkifyPubkyURLs() {
+  // Regex to match pubky:// URLs (with or without the //)
+  // Note: Only pubky, not pk
+  const pubkyRegex = /\b(pubky:(?:\/\/)?[a-z0-9]+(?:\/[^\s]*)?)/gi;
+  
+  // Walk through text nodes
+  const walker = document.createTreeWalker(
+    document.body,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode: (node) => {
+        // Skip script, style, and already processed nodes
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        
+        // Skip certain element types
+        const tagName = parent.tagName;
+        if (tagName === 'SCRIPT' || tagName === 'STYLE' || tagName === 'NOSCRIPT') {
+          return NodeFilter.FILTER_REJECT;
+        }
+        
+        // Skip if already inside our custom button
+        if (parent.classList.contains('pubky-link-button') || 
+            parent.closest('.pubky-link-button')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        
+        // Skip if inside an anchor tag (already linked)
+        if (parent.tagName === 'A' || parent.closest('a')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        
+        // Skip if inside button or other interactive elements
+        if (tagName === 'BUTTON' || tagName === 'INPUT' || 
+            tagName === 'TEXTAREA' || tagName === 'SELECT') {
+          return NodeFilter.FILTER_REJECT;
+        }
+        
+        // Skip if parent has data attribute marking it as processed
+        if (parent.hasAttribute('data-pubky-linkified') || 
+            parent.closest('[data-pubky-linkified]')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        
+        // Only process if contains pubky URL
+        if (pubkyRegex.test(node.textContent || '')) {
+          return NodeFilter.FILTER_ACCEPT;
+        }
+        return NodeFilter.FILTER_REJECT;
+      }
+    }
+  );
+
+  const textNodes: Node[] = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    textNodes.push(node);
+  }
+
+  // Process each text node
+  textNodes.forEach((textNode) => {
+    const text = textNode.textContent || '';
+    const parent = textNode.parentNode;
+    if (!parent) return;
+    
+    const matches = text.matchAll(pubkyRegex);
+    const fragments: Array<string | HTMLElement> = [];
+    let lastIndex = 0;
+    let hasMatches = false;
+
+    for (const match of matches) {
+      const url = match[0];
+      const matchIndex = match.index || 0;
+      hasMatches = true;
+
+      // Add text before match
+      if (matchIndex > lastIndex) {
+        fragments.push(text.substring(lastIndex, matchIndex));
+      }
+
+      // Create clickable button
+      const button = document.createElement('span');
+      button.className = 'pubky-link-button';
+      button.setAttribute('data-pubky-linkified', 'true');
+      
+      // Normalize URL to always have :// 
+      const normalizedUrl = url.replace(/^pubky:(?!\/\/)/, 'pubky://');
+      button.setAttribute('data-pubky-url', normalizedUrl);
+      button.innerHTML = `
+        <span class="pubky-link-icon">🔗</span>
+        <span>${url.length > 30 ? url.substring(0, 30) + '...' : url}</span>
+      `;
+      fragments.push(button);
+
+      lastIndex = matchIndex + url.length;
+    }
+
+    // Only process if we found matches
+    if (!hasMatches) return;
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      fragments.push(text.substring(lastIndex));
+    }
+
+    // Create a wrapper to mark as processed
+    const wrapper = document.createElement('span');
+    wrapper.setAttribute('data-pubky-linkified', 'true');
+    wrapper.style.display = 'contents'; // Don't affect layout
+    
+    fragments.forEach((fragment) => {
+      if (typeof fragment === 'string') {
+        wrapper.appendChild(document.createTextNode(fragment));
+      } else {
+        wrapper.appendChild(fragment);
+      }
+    });
+    
+    // Replace text node with wrapper
+    parent.replaceChild(wrapper, textNode);
+  });
+}
+
+/**
+ * Observe DOM changes to linkify dynamically added content
+ */
+function observeDOMForPubkyURLs() {
+  let isProcessing = false;
+  
+  const observer = new MutationObserver((mutations) => {
+    // Ignore mutations caused by our own linkification
+    const isOurMutation = mutations.some(mutation => {
+      // Check if any added nodes are our buttons or wrappers
+      return Array.from(mutation.addedNodes).some(node => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as Element;
+          return element.classList.contains('pubky-link-button') ||
+                 element.hasAttribute('data-pubky-linkified') ||
+                 element.querySelector('.pubky-link-button') !== null;
+        }
+        return false;
+      });
+    });
+    
+    if (isOurMutation) {
+      return; // Skip processing our own changes
+    }
+    
+    // Debounce linkification
+    if (!isProcessing) {
+      clearTimeout((window as any).pubkyLinkifyTimeout);
+      (window as any).pubkyLinkifyTimeout = setTimeout(() => {
+        isProcessing = true;
+        try {
+          linkifyPubkyURLs();
+        } finally {
+          isProcessing = false;
+        }
+      }, 500);
+    }
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+}

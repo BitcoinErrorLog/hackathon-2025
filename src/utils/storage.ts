@@ -28,6 +28,25 @@ export interface StoredTag {
   pubkyUrl?: string;
 }
 
+// Pubky App standard profile.json structure
+// This matches the official Pubky App data model
+export interface ProfileData {
+  name: string;
+  bio?: string;
+  image?: string; // Avatar URL
+  status?: string; // Combined status text and emoji
+  links?: Array<{
+    title: string;
+    url: string;
+  }>;
+}
+
+export interface CachedProfile {
+  data: ProfileData;
+  cachedAt: number;
+  ttl: number; // Time to live in milliseconds
+}
+
 class Storage {
   private static instance: Storage;
 
@@ -151,6 +170,65 @@ class Storage {
     return allTags
       .filter(t => t.url === url)
       .map(t => t.label);
+  }
+
+  // Profile management
+  async saveProfile(profile: ProfileData): Promise<void> {
+    try {
+      await chrome.storage.local.set({ profile });
+      logger.info('Storage', 'Profile saved', { name: profile.name });
+    } catch (error) {
+      logger.error('Storage', 'Failed to save profile', error as Error);
+      throw error;
+    }
+  }
+
+  async getProfile(): Promise<ProfileData | null> {
+    try {
+      const result = await chrome.storage.local.get('profile');
+      return result.profile || null;
+    } catch (error) {
+      logger.error('Storage', 'Failed to get profile', error as Error);
+      return null;
+    }
+  }
+
+  async cacheProfile(pubkey: string, profile: ProfileData, ttl: number = 3600000): Promise<void> {
+    try {
+      const cached: CachedProfile = {
+        data: profile,
+        cachedAt: Date.now(),
+        ttl,
+      };
+      const key = `profile_cache_${pubkey}`;
+      await chrome.storage.local.set({ [key]: cached });
+      logger.debug('Storage', 'Profile cached', { pubkey });
+    } catch (error) {
+      logger.error('Storage', 'Failed to cache profile', error as Error);
+    }
+  }
+
+  async getCachedProfile(pubkey: string): Promise<ProfileData | null> {
+    try {
+      const key = `profile_cache_${pubkey}`;
+      const result = await chrome.storage.local.get(key);
+      const cached: CachedProfile = result[key];
+      
+      if (!cached) return null;
+      
+      // Check if cache is still valid
+      const now = Date.now();
+      if (now - cached.cachedAt > cached.ttl) {
+        // Cache expired, remove it
+        await chrome.storage.local.remove(key);
+        return null;
+      }
+      
+      return cached.data;
+    } catch (error) {
+      logger.error('Storage', 'Failed to get cached profile', error as Error);
+      return null;
+    }
   }
 
   // Settings

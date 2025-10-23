@@ -6,6 +6,9 @@ import { logger } from '../utils/logger';
 import AuthView from './components/AuthView';
 import MainView from './components/MainView';
 import DebugPanel from './components/DebugPanel';
+import { ProfileEditor } from './components/ProfileEditor';
+
+type View = 'main' | 'profile';
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -13,6 +16,7 @@ function App() {
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [currentTitle, setCurrentTitle] = useState<string>('');
   const [showDebug, setShowDebug] = useState(false);
+  const [currentView, setCurrentView] = useState<View>('main');
 
   useEffect(() => {
     initializeApp();
@@ -130,6 +134,14 @@ function App() {
     logger.info('App', 'Opening side panel');
   };
 
+  const handleEditProfile = () => {
+    setCurrentView('profile');
+  };
+
+  const handleBackToMain = () => {
+    setCurrentView('main');
+  };
+
   if (loading) {
     return (
       <div className="w-[400px] h-[500px] flex items-center justify-center bg-[#2B2B2B]">
@@ -167,6 +179,16 @@ function App() {
       <div className="p-4">
         {!session ? (
           <AuthView onAuthSuccess={handleAuthSuccess} />
+        ) : currentView === 'profile' ? (
+          <div>
+            <button
+              onClick={handleBackToMain}
+              className="mb-4 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm flex items-center gap-2"
+            >
+              <span>←</span> Back
+            </button>
+            <ProfileEditor />
+          </div>
         ) : (
           <MainView
             session={session}
@@ -176,6 +198,7 @@ function App() {
             onBookmark={handleBookmark}
             onPost={handlePost}
             onOpenSidePanel={handleOpenSidePanel}
+            onEditProfile={handleEditProfile}
           />
         )}
       </div>

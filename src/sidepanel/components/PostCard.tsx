@@ -1,4 +1,5 @@
 import { NexusPost } from '../../utils/nexus-client';
+import { getTagStyle } from '../../utils/tag-colors';
 
 interface PostCardProps {
   post: NexusPost;
@@ -131,17 +132,24 @@ function PostCard({ post }: PostCardProps) {
       {/* Tags */}
       {post.tags && post.tags.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">
-          {post.tags.slice(0, 3).map((tag, idx) => (
-            <button
-              key={idx}
-              className="px-3 py-1.5 bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
-            >
-              {tag.label}
-              {tag.taggers_count > 1 && (
-                <span className="text-blue-400">{tag.taggers_count}</span>
-              )}
-            </button>
-          ))}
+          {post.tags.slice(0, 3).map((tag, idx) => {
+            const tagStyle = getTagStyle(tag.label);
+            return (
+              <button
+                key={idx}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-80 flex items-center gap-1.5"
+                style={{
+                  backgroundColor: tagStyle.backgroundColor,
+                  color: tagStyle.color
+                }}
+              >
+                {tag.label}
+                {tag.taggers_count > 1 && (
+                  <span className="opacity-75">{tag.taggers_count}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 

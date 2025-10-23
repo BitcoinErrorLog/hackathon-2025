@@ -1,5 +1,6 @@
 import { logger } from './logger';
 import { storage, Session } from './storage';
+import { profileManager } from './profile-manager';
 
 /**
  * Pubky authentication using official @synonymdev/pubky SDK
@@ -133,10 +134,37 @@ class AuthManagerSDK {
       await storage.saveSession(session);
 
       logger.info('AuthSDK', 'Session created and stored', { pubky: pubkyId });
+      
+      // Initialize profile after authentication (async, don't block)
+      this.initializeUserProfile(session).catch(error => {
+        logger.warn('AuthSDK', 'Failed to initialize profile', error);
+      });
+
       onSuccess(session);
     } catch (error) {
       logger.error('AuthSDK', 'Failed during approval wait', error as Error);
       onError(error as Error);
+    }
+  }
+
+  /**
+   * Initialize user profile after authentication
+   * Ensures profile.json and index.html exist using ProfileManager
+   */
+  private async initializeUserProfile(session: Session): Promise<void> {
+    try {
+      logger.info('AuthSDK', 'Initializing user profile', { pubky: session.pubky });
+
+      // Use ProfileManager to ensure profile exists
+      // This will:
+      // 1. Check for profile.json, create if missing
+      // 2. Check for index.html, generate from profile.json if missing
+      await profileManager.ensureProfile(session.pubky);
+
+      logger.info('AuthSDK', 'Profile initialized successfully');
+    } catch (error) {
+      logger.error('AuthSDK', 'Failed to initialize profile', error as Error);
+      throw error;
     }
   }
 
