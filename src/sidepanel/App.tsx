@@ -53,11 +53,12 @@ function App() {
 
       // Search for posts containing this URL using Nexus API
       const foundPosts = await pubkyAPISDK.searchPostsByUrl(currentUrl, session?.pubky);
-      setPosts(foundPosts);
+      setPosts(foundPosts || []);
 
-      logger.info('SidePanel', 'Posts loaded', { count: foundPosts.length });
+      logger.info('SidePanel', 'Posts loaded', { count: foundPosts?.length || 0 });
     } catch (error) {
       logger.error('SidePanel', 'Failed to load posts', error as Error);
+      setPosts([]);
     } finally {
       setLoadingPosts(false);
     }
@@ -143,7 +144,7 @@ function App() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
             <p className="text-gray-600">Loading posts...</p>
           </div>
-        ) : posts.length === 0 ? (
+        ) : !posts || posts.length === 0 ? (
           <EmptyState currentUrl={currentUrl} />
         ) : (
           <div className="space-y-4">
