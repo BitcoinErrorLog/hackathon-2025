@@ -244,52 +244,55 @@ async function handleGetAnnotations(url: string): Promise<Annotation[]> {
 }
 
 // Handle keyboard commands
-chrome.commands.onCommand.addListener(async (command) => {
+// NOTE: Must NOT use async/await here to preserve user gesture context
+chrome.commands.onCommand.addListener((command) => {
   logger.info('Background', 'Command received', { command });
   
   if (command === 'toggle-sidepanel') {
-    // Open the side panel - Chrome handles toggle behavior automatically
-    // When the panel is already open, the keyboard shortcut won't trigger this
-    // Chrome's built-in behavior toggles it on repeated shortcut presses
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id && tab.windowId) {
-      try {
-        // Open for the specific window (not just tab)
-        await chrome.sidePanel.open({ windowId: tab.windowId });
-        logger.info('Background', 'Side panel opened via keyboard shortcut', { 
-          tabId: tab.id,
-          windowId: tab.windowId 
+    // Open the side panel - must be synchronous to preserve user gesture
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (tab?.windowId) {
+        chrome.sidePanel.open({ windowId: tab.windowId }, () => {
+          if (chrome.runtime.lastError) {
+            logger.error('Background', 'Failed to toggle side panel', new Error(chrome.runtime.lastError.message));
+          } else {
+            logger.info('Background', 'Side panel opened via keyboard shortcut', { 
+              tabId: tab.id,
+              windowId: tab.windowId 
+            });
+          }
         });
-      } catch (error) {
-        logger.error('Background', 'Failed to toggle side panel', error as Error);
       }
-    }
+    });
   }
   
   if (command === 'open-annotations') {
     // Open side panel and switch to annotations tab
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id && tab.windowId) {
-      try {
-        await chrome.sidePanel.open({ windowId: tab.windowId });
-        
-        // Send message to sidebar to switch to annotations tab
-        setTimeout(() => {
-          chrome.runtime.sendMessage({
-            type: 'SWITCH_TO_ANNOTATIONS',
-          }).catch(() => {
-            // Sidebar might not be ready yet, that's ok
-          });
-        }, 500); // Longer delay to ensure sidebar is loaded
-        
-        logger.info('Background', 'Side panel opened to annotations via keyboard shortcut', { 
-          tabId: tab.id,
-          windowId: tab.windowId 
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (tab?.windowId) {
+        chrome.sidePanel.open({ windowId: tab.windowId }, () => {
+          if (chrome.runtime.lastError) {
+            logger.error('Background', 'Failed to open annotations', new Error(chrome.runtime.lastError.message));
+          } else {
+            // Send message to sidebar to switch to annotations tab
+            setTimeout(() => {
+              chrome.runtime.sendMessage({
+                type: 'SWITCH_TO_ANNOTATIONS',
+              }).catch(() => {
+                // Sidebar might not be ready yet, that's ok
+              });
+            }, 500);
+            
+            logger.info('Background', 'Side panel opened to annotations via keyboard shortcut', { 
+              tabId: tab.id,
+              windowId: tab.windowId 
+            });
+          }
         });
-      } catch (error) {
-        logger.error('Background', 'Failed to open annotations', error as Error);
       }
-    }
+    });
   }
 });
 
