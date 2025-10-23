@@ -44,16 +44,21 @@ export default defineConfig({
         popup: resolve(__dirname, 'popup.html'),
         sidepanel: resolve(__dirname, 'sidepanel.html'),
         background: resolve(__dirname, 'src/background/background.ts'),
+        content: resolve(__dirname, 'src/content/content.ts'),
       },
       output: {
         entryFileNames: (chunkInfo) => {
           if (chunkInfo.name === 'background') {
             return 'background.js';
           }
+          if (chunkInfo.name === 'content') {
+            return 'content.js';
+          }
           return 'assets/[name]-[hash].js';
         },
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
+        format: 'es', // Default format for most files
       },
     },
     sourcemap: true,

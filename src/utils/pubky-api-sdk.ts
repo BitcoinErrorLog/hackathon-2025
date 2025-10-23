@@ -475,6 +475,136 @@ class PubkyAPISDK {
     }
   }
 
+  /**
+   * Create an annotation post
+   * Annotations are regular posts with special metadata about the selected text
+   */
+  async createAnnotationPost(
+    url: string,
+    selectedText: string,
+    comment: string,
+    metadata: {
+      startPath: string;
+      endPath: string;
+      startOffset: number;
+      endOffset: number;
+    }
+  ): Promise<string> {
+    try {
+      const session = await this.getAuthenticatedSession();
+      logger.info('PubkyAPISDK', 'Creating annotation post', { url, selectedText: selectedText.substring(0, 50) });
+
+      await this.ensurePubky();
+
+      // Create content that includes the annotation details
+      const content = JSON.stringify({
+        type: 'annotation',
+        url,
+        selectedText,
+        comment,
+        metadata,
+      });
+
+      // Use official pubky-app-specs builder
+      const builder = new PubkySpecsBuilder(session.pubky);
+      const result = builder.createPost(
+        content,
+        PubkyAppPostKind.Short,  // Use short post type for annotations
+        null,  // parent
+        null,  // embed
+        []     // attachments
+      );
+
+      const post = result.post.toJson();
+      const fullPath = result.meta.url;
+
+      // Write post to homeserver
+      try {
+        await this.pubky.fetch(fullPath, {
+          method: 'PUT',
+          body: JSON.stringify(post),
+          credentials: 'include',
+        });
+        
+        logger.info('PubkyAPISDK', 'Annotation post written to homeserver', { 
+          path: fullPath,
+          id: result.meta.id 
+        });
+      } catch (writeError) {
+        logger.error('PubkyAPISDK', 'Failed to write annotation post to homeserver', writeError as Error);
+        throw writeError;
+      }
+
+      // Generate URL hash tag for Nexus querying
+      const urlHashTag = await generateUrlHashTag(url);
+      
+      // Add special annotation tag
+      const annotationTag = 'pubky:annotation';
+      const allTags = [urlHashTag, annotationTag];
+      
+      logger.info('PubkyAPISDK', 'Adding tags to annotation post', { 
+        urlHashTag,
+        annotationTag,
+        totalTags: allTags.length 
+      });
+
+      // Create all tags for the post
+      if (allTags.length > 0) {
+        await this.createTags(fullPath, allTags);
+      }
+
+      logger.info('PubkyAPISDK', 'Annotation post created successfully', { 
+        postUrl: fullPath,
+        urlHashTag 
+      });
+      return fullPath;
+    } catch (error) {
+      logger.error('PubkyAPISDK', 'Failed to create annotation post', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Search for annotation posts for a specific URL
+   */
+  async searchAnnotationsByUrl(url: string, viewerId?: string): Promise<NexusPost[]> {
+    try {
+      logger.info('PubkyAPISDK', 'Searching annotations by URL via Nexus', { url });
+      
+      // Generate the URL hash tag to search for
+      const urlHashTag = await generateUrlHashTag(url);
+      const annotationTag = 'pubky:annotation';
+      
+      logger.info('PubkyAPISDK', 'Searching by URL hash tag and annotation tag', { 
+        urlHashTag, 
+        annotationTag 
+      });
+      
+      // Query ALL annotation posts with this URL tag
+      const response = await nexusClient.streamPosts({
+        tags: `${urlHashTag},${annotationTag}`, // Search for posts with BOTH tags
+        limit: 100,
+        viewer_id: viewerId
+      });
+      
+      const allPosts = response.data || [];
+      
+      // Filter out deleted posts
+      const posts = allPosts.filter(post => !this.isPostDeleted(post));
+      
+      logger.info('PubkyAPISDK', 'Found annotation posts', { 
+        totalCount: allPosts.length,
+        filteredCount: posts.length,
+        urlHashTag 
+      });
+      
+      return posts;
+    } catch (error) {
+      logger.error('PubkyAPISDK', 'Failed to search annotations', error as Error);
+      return [];
+    }
+  }
+
 }
 
 export const pubkyAPISDK = PubkyAPISDK.getInstance();

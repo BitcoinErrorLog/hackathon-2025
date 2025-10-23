@@ -130,16 +130,16 @@ export function parseAuthToken(tokenBytes: Uint8Array): AuthToken {
 
 /**
  * Generate a URL hash tag for Nexus querying
- * Creates a base64url-encoded SHA-256 hash truncated to fit 20-char tag limit
+ * Creates a UTF-16 encoded SHA-256 hash with crazy Unicode characters!
  * 
  * Process:
  * 1. SHA-256 hash the URL (32 bytes = 256 bits)
- * 2. Take first 14 bytes (112 bits) for compression
- * 3. Encode as base64url (19 chars: A-Z, a-z, 0-9, -, _)
- * 4. Convert to lowercase and prefix with 'u' (total 20 chars)
+ * 2. Take first 20 bytes (160 bits) for compression
+ * 3. Encode as UTF-16 pairs (10 chars of wild Unicode)
+ * 4. Creates visually interesting tags with symbols, emojis, and rare characters
  * 
- * Collision resistance: 2^112 ≈ 5×10^33 possible hashes
- * Birthday paradox collision at ~2^56 ≈ 72 quadrillion URLs (more than sufficient)
+ * Collision resistance: 2^160 ≈ 1.46×10^48 possible hashes (way more than enough!)
+ * Birthday paradox collision at ~2^80 ≈ 1.2 septillion URLs
  */
 export async function generateUrlHashTag(url: string): Promise<string> {
   try {
@@ -150,22 +150,27 @@ export async function generateUrlHashTag(url: string): Promise<string> {
     // Generate SHA-256 hash (32 bytes)
     const hashBytes = await sha256(urlBytes);
     
-    // Take first 14 bytes (112 bits) for compression
-    const truncatedHash = hashBytes.slice(0, 14);
+    // Take first 20 bytes (160 bits) for UTF-16 encoding (10 chars)
+    const truncatedHash = hashBytes.slice(0, 20);
     
-    // Encode as base64url (19 chars)
-    let base64url = base64UrlEncode(truncatedHash);
+    // Encode as UTF-16 by treating pairs of bytes as 16-bit code points
+    let hashTag = '';
+    for (let i = 0; i < truncatedHash.length; i += 2) {
+      // Combine two bytes into a 16-bit value (little-endian)
+      const codePoint = truncatedHash[i] | (truncatedHash[i + 1] << 8);
+      
+      // Convert to character (creates crazy Unicode characters!)
+      hashTag += String.fromCharCode(codePoint);
+    }
     
     // Ensure it's lowercase (Pubky tags are normalized to lowercase)
-    base64url = base64url.toLowerCase();
+    hashTag = hashTag.toLowerCase();
     
-    // Prefix with 'u' to identify as URL hash (total 20 chars)
-    const hashTag = `u${base64url}`;
-    
-    logger.debug('Crypto', 'Generated base64url URL hash tag', { 
+    logger.debug('Crypto', 'Generated UTF-16 URL hash tag with crazy characters 🎨', { 
       url, 
       hashTag,
-      length: hashTag.length 
+      length: hashTag.length,
+      codePoints: [...hashTag].map(c => c.charCodeAt(0))
     });
     
     return hashTag;

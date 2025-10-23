@@ -3,16 +3,20 @@ import { authManagerSDK } from '../utils/auth-sdk';
 import { Session } from '../utils/storage';
 import { pubkyAPISDK } from '../utils/pubky-api-sdk';
 import { NexusPost } from '../utils/nexus-client';
+import { Annotation } from '../utils/annotations';
 import { logger } from '../utils/logger';
 import PostCard from './components/PostCard';
 import EmptyState from './components/EmptyState';
+import AnnotationCard from './components/AnnotationCard';
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [posts, setPosts] = useState<NexusPost[]>([]);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
+  const [activeTab, setActiveTab] = useState<'posts' | 'annotations'>('posts');
 
   useEffect(() => {
     initializePanel();
@@ -56,11 +60,32 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Load posts if we have a URL (session is optional now since we show ALL posts)
+    // Load posts and annotations if we have a URL
     if (currentUrl) {
       loadPosts();
+      loadAnnotations();
     }
   }, [session, currentUrl]);
+
+  useEffect(() => {
+    // Listen for messages to scroll to annotations or switch tabs
+    const handleMessage = (message: any) => {
+      if (message.type === 'SCROLL_TO_ANNOTATION') {
+        setActiveTab('annotations');
+        // Scroll logic will be handled in the render
+      }
+      
+      if (message.type === 'SWITCH_TO_ANNOTATIONS') {
+        logger.info('SidePanel', 'Switching to annotations tab via keyboard shortcut');
+        setActiveTab('annotations');
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+    };
+  }, []);
 
   const initializePanel = async () => {
     try {
@@ -69,6 +94,16 @@ function App() {
       // Check authentication
       const existingSession = await authManagerSDK.getSession();
       setSession(existingSession);
+
+      // Sync any pending annotations to Pubky (from when background couldn't do it)
+      if (existingSession) {
+        try {
+          const { AnnotationSync } = await import('../utils/annotation-sync');
+          await AnnotationSync.syncPendingAnnotations();
+        } catch (syncError) {
+          logger.warn('SidePanel', 'Failed to sync pending annotations', syncError);
+        }
+      }
 
       // Get current tab info
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -107,8 +142,46 @@ function App() {
     }
   };
 
+  const loadAnnotations = async () => {
+    try {
+      logger.info('SidePanel', 'Loading annotations for URL', { url: currentUrl });
+
+      // Request annotations from background script
+      chrome.runtime.sendMessage(
+        {
+          type: 'GET_ANNOTATIONS',
+          url: currentUrl,
+        },
+        (response) => {
+          if (response?.annotations) {
+            setAnnotations(response.annotations);
+            logger.info('SidePanel', 'Annotations loaded', { count: response.annotations.length });
+          }
+        }
+      );
+    } catch (error) {
+      logger.error('SidePanel', 'Failed to load annotations', error as Error);
+      setAnnotations([]);
+    }
+  };
+
   const handleRefresh = () => {
     loadPosts();
+    loadAnnotations();
+  };
+
+  const handleAnnotationClick = (annotation: Annotation) => {
+    logger.info('SidePanel', 'Annotation clicked, highlighting on page', { id: annotation.id });
+    
+    // Send message to content script to highlight the annotation on the page
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'HIGHLIGHT_ANNOTATION',
+          annotationId: annotation.id,
+        });
+      }
+    });
   };
 
   if (loading) {
@@ -159,7 +232,7 @@ function App() {
             <div>
               <h1 className="text-lg font-bold text-white">Graphiti Feed</h1>
               <p className="text-xs text-gray-400">
-                All posts about this page across the network
+                {activeTab === 'posts' ? 'All posts about this page' : 'Annotations on this page'}
               </p>
             </div>
             <button
@@ -184,6 +257,30 @@ function App() {
             </button>
           </div>
 
+          {/* Tab Switcher */}
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => setActiveTab('posts')}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition ${
+                activeTab === 'posts'
+                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
+                  : 'bg-[#2A2A2A] text-gray-400 hover:text-white'
+              }`}
+            >
+              Posts ({posts.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('annotations')}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition ${
+                activeTab === 'annotations'
+                  ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white'
+                  : 'bg-[#2A2A2A] text-gray-400 hover:text-white'
+              }`}
+            >
+              Annotations ({annotations.length})
+            </button>
+          </div>
+
           {/* Current URL */}
           <div className="bg-[#2A2A2A] border border-[#3F3F3F] rounded-lg p-3">
             <p className="text-xs text-gray-500 mb-1">Current page:</p>
@@ -194,21 +291,58 @@ function App() {
         </div>
       </header>
 
-      {/* Posts Feed */}
+      {/* Content */}
       <div className="p-4">
-        {loadingPosts ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-gray-400">Loading posts...</p>
-          </div>
-        ) : !posts || posts.length === 0 ? (
-          <EmptyState currentUrl={currentUrl} />
+        {activeTab === 'posts' ? (
+          // Posts Feed
+          loadingPosts ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-400">Loading posts...</p>
+            </div>
+          ) : !posts || posts.length === 0 ? (
+            <EmptyState currentUrl={currentUrl} />
+          ) : (
+            <div className="space-y-3">
+              {posts.map((post) => (
+                <PostCard key={post.details?.id || post.id || Math.random().toString()} post={post} />
+              ))}
+            </div>
+          )
         ) : (
-          <div className="space-y-3">
-            {posts.map((post) => (
-              <PostCard key={post.details?.id || post.id || Math.random().toString()} post={post} />
-            ))}
-          </div>
+          // Annotations Feed
+          annotations.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">No Annotations Yet</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Select text on the page to create the first annotation
+              </p>
+              <div className="text-left max-w-md mx-auto bg-[#1F1F1F] border border-[#3F3F3F] rounded-lg p-4">
+                <p className="text-xs text-gray-400 mb-2">How to annotate:</p>
+                <ol className="text-xs text-gray-300 space-y-1 list-decimal list-inside">
+                  <li>Select any text on the page</li>
+                  <li>Click "Add Annotation" button</li>
+                  <li>Write your comment</li>
+                  <li>Your annotation will be visible to everyone!</li>
+                </ol>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {annotations.map((annotation) => (
+                <AnnotationCard 
+                  key={annotation.id} 
+                  annotation={annotation}
+                  onHighlight={handleAnnotationClick}
+                />
+              ))}
+            </div>
+          )
         )}
       </div>
     </div>
