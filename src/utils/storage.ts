@@ -47,6 +47,15 @@ export interface CachedProfile {
   ttl: number; // Time to live in milliseconds
 }
 
+export interface Drawing {
+  id: string;
+  url: string;
+  canvasData: string; // base64 PNG
+  timestamp: number;
+  author: string;
+  pubkyUrl?: string; // URL on homeserver
+}
+
 class Storage {
   private static instance: Storage;
 
@@ -248,6 +257,51 @@ class Storage {
       logger.debug('Storage', `Setting saved: ${key}`, { value });
     } catch (error) {
       logger.error('Storage', `Failed to save setting: ${key}`, error as Error);
+      throw error;
+    }
+  }
+
+  // Drawings
+  async saveDrawing(drawing: Drawing): Promise<void> {
+    try {
+      const drawings = await this.getAllDrawings();
+      drawings[drawing.url] = drawing;
+      await chrome.storage.local.set({ pubky_drawings: drawings });
+      logger.info('Storage', 'Drawing saved', { url: drawing.url });
+    } catch (error) {
+      logger.error('Storage', 'Failed to save drawing', error as Error);
+      throw error;
+    }
+  }
+
+  async getDrawing(url: string): Promise<Drawing | null> {
+    try {
+      const drawings = await this.getAllDrawings();
+      return drawings[url] || null;
+    } catch (error) {
+      logger.error('Storage', 'Failed to get drawing', error as Error);
+      return null;
+    }
+  }
+
+  async getAllDrawings(): Promise<{ [url: string]: Drawing }> {
+    try {
+      const result = await chrome.storage.local.get('pubky_drawings');
+      return result.pubky_drawings || {};
+    } catch (error) {
+      logger.error('Storage', 'Failed to get all drawings', error as Error);
+      return {};
+    }
+  }
+
+  async deleteDrawing(url: string): Promise<void> {
+    try {
+      const drawings = await this.getAllDrawings();
+      delete drawings[url];
+      await chrome.storage.local.set({ pubky_drawings: drawings });
+      logger.info('Storage', 'Drawing deleted', { url });
+    } catch (error) {
+      logger.error('Storage', 'Failed to delete drawing', error as Error);
       throw error;
     }
   }

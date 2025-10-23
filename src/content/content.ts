@@ -669,17 +669,6 @@ class AnnotationManager {
   }
 }
 
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    new AnnotationManager();
-    initPubkyURLHandler();
-  });
-} else {
-  new AnnotationManager();
-  initPubkyURLHandler();
-}
-
 /**
  * Pubky URL Click Handler
  * Intercepts clicks on pubky:// and pk:// URLs and opens them in profile renderer
@@ -965,4 +954,369 @@ function observeDOMForPubkyURLs() {
     childList: true,
     subtree: true,
   });
+}
+
+/**
+ * Drawing Manager
+ * Manages canvas-based graffiti drawing overlay on web pages
+ */
+class DrawingManager {
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
+  private toolbar: HTMLElement | null = null;
+  private isDrawing = false;
+  private isActive = false;
+  private currentColor = '#FF6B6B';
+  private currentThickness = 5;
+  private lastX = 0;
+  private lastY = 0;
+
+  private readonly COLORS = [
+    '#FF6B6B', // Red
+    '#4ECDC4', // Cyan
+    '#45B7D1', // Blue
+    '#FFA07A', // Orange
+    '#98D8C8', // Mint
+    '#F7DC6F', // Yellow
+    '#BB8FCE', // Purple
+    '#FFFFFF', // White
+  ];
+
+  constructor() {
+    logger.info('DrawingManager', 'Initializing drawing manager');
+    this.init();
+  }
+
+  private init() {
+    logger.info('DrawingManager', 'Setting up message listeners');
+    
+    // Listen for toggle message from background
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      logger.debug('DrawingManager', 'Message received', { type: message.type });
+      
+      if (message.type === 'TOGGLE_DRAWING_MODE') {
+        logger.info('DrawingManager', 'Toggle drawing mode requested');
+        this.toggleDrawing();
+        sendResponse({ success: true, active: this.isActive });
+        return true;
+      } else if (message.type === 'GET_DRAWING_STATUS') {
+        sendResponse({ active: this.isActive });
+        return true;
+      }
+      return false;
+    });
+
+    logger.info('DrawingManager', 'Message listeners registered');
+  }
+
+  private async toggleDrawing() {
+    this.isActive = !this.isActive;
+    
+    if (this.isActive) {
+      logger.info('DrawingManager', 'Activating drawing mode');
+      this.createCanvas();
+      this.createToolbar();
+      await this.loadDrawing();
+    } else {
+      logger.info('DrawingManager', 'Deactivating drawing mode');
+      await this.saveDrawing();
+      this.removeCanvas();
+      this.removeToolbar();
+    }
+  }
+
+  private createCanvas() {
+    if (this.canvas) return;
+
+    // Create canvas element
+    this.canvas = document.createElement('canvas');
+    this.canvas.id = 'pubky-drawing-canvas';
+    this.canvas.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 999999;
+      cursor: crosshair;
+      pointer-events: auto;
+    `;
+
+    // Set canvas size to match viewport
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
+
+    // Get 2D context
+    this.ctx = this.canvas.getContext('2d');
+    if (!this.ctx) {
+      logger.error('DrawingManager', 'Failed to get canvas context');
+      return;
+    }
+
+    // Set up context properties
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+
+    // Add event listeners
+    this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
+    this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+    this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+    this.canvas.addEventListener('mouseleave', this.handleMouseUp.bind(this));
+
+    // Prevent scrolling while drawing is active
+    document.body.style.overflow = 'hidden';
+
+    document.body.appendChild(this.canvas);
+    logger.info('DrawingManager', 'Canvas created');
+  }
+
+  private removeCanvas() {
+    if (this.canvas) {
+      this.canvas.remove();
+      this.canvas = null;
+      this.ctx = null;
+      document.body.style.overflow = '';
+      logger.info('DrawingManager', 'Canvas removed');
+    }
+  }
+
+  private createToolbar() {
+    if (this.toolbar) return;
+
+    this.toolbar = document.createElement('div');
+    this.toolbar.id = 'pubky-drawing-toolbar';
+    this.toolbar.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #2B2B2B;
+      border: 1px solid #3F3F3F;
+      border-radius: 12px;
+      padding: 16px;
+      z-index: 1000000;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    // Color palette
+    const colorSection = document.createElement('div');
+    colorSection.style.cssText = 'margin-bottom: 12px;';
+    
+    const colorLabel = document.createElement('div');
+    colorLabel.textContent = 'Color';
+    colorLabel.style.cssText = 'color: white; font-size: 12px; font-weight: 600; margin-bottom: 8px;';
+    colorSection.appendChild(colorLabel);
+
+    const colorGrid = document.createElement('div');
+    colorGrid.style.cssText = 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;';
+    
+    this.COLORS.forEach(color => {
+      const colorBtn = document.createElement('button');
+      colorBtn.style.cssText = `
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: 2px solid ${color === this.currentColor ? '#667eea' : '#3F3F3F'};
+        background: ${color};
+        cursor: pointer;
+        transition: border-color 0.2s ease;
+      `;
+      colorBtn.onclick = () => {
+        this.currentColor = color;
+        // Update all color buttons
+        Array.from(colorGrid.children).forEach((btn, idx) => {
+          (btn as HTMLElement).style.borderColor = 
+            this.COLORS[idx] === color ? '#667eea' : '#3F3F3F';
+        });
+      };
+      colorGrid.appendChild(colorBtn);
+    });
+    
+    colorSection.appendChild(colorGrid);
+    this.toolbar.appendChild(colorSection);
+
+    // Thickness slider
+    const thicknessSection = document.createElement('div');
+    thicknessSection.style.cssText = 'margin-bottom: 12px;';
+    
+    const thicknessLabel = document.createElement('div');
+    thicknessLabel.textContent = `Thickness: ${this.currentThickness}px`;
+    thicknessLabel.style.cssText = 'color: white; font-size: 12px; font-weight: 600; margin-bottom: 8px;';
+    thicknessSection.appendChild(thicknessLabel);
+
+    const thicknessSlider = document.createElement('input');
+    thicknessSlider.type = 'range';
+    thicknessSlider.min = '2';
+    thicknessSlider.max = '20';
+    thicknessSlider.value = this.currentThickness.toString();
+    thicknessSlider.style.cssText = 'width: 100%;';
+    thicknessSlider.oninput = (e) => {
+      const value = (e.target as HTMLInputElement).value;
+      this.currentThickness = parseInt(value);
+      thicknessLabel.textContent = `Thickness: ${value}px`;
+    };
+    thicknessSection.appendChild(thicknessSlider);
+    this.toolbar.appendChild(thicknessSection);
+
+    // Buttons
+    const buttonsSection = document.createElement('div');
+    buttonsSection.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+
+    // Clear button
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = 'Clear All';
+    clearBtn.style.cssText = `
+      padding: 8px 12px;
+      background: #3F3F3F;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    `;
+    clearBtn.onmouseover = () => clearBtn.style.background = '#4F4F4F';
+    clearBtn.onmouseout = () => clearBtn.style.background = '#3F3F3F';
+    clearBtn.onclick = () => this.clearCanvas();
+    buttonsSection.appendChild(clearBtn);
+
+    // Save & Exit button
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save & Exit';
+    saveBtn.style.cssText = `
+      padding: 8px 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    `;
+    saveBtn.onmouseover = () => saveBtn.style.transform = 'translateY(-1px)';
+    saveBtn.onmouseout = () => saveBtn.style.transform = 'translateY(0)';
+    saveBtn.onclick = async () => {
+      await this.saveDrawing();
+      this.toggleDrawing();
+    };
+    buttonsSection.appendChild(saveBtn);
+
+    this.toolbar.appendChild(buttonsSection);
+    document.body.appendChild(this.toolbar);
+    logger.info('DrawingManager', 'Toolbar created');
+  }
+
+  private removeToolbar() {
+    if (this.toolbar) {
+      this.toolbar.remove();
+      this.toolbar = null;
+      logger.info('DrawingManager', 'Toolbar removed');
+    }
+  }
+
+  private handleMouseDown(e: MouseEvent) {
+    this.isDrawing = true;
+    this.lastX = e.clientX;
+    this.lastY = e.clientY;
+  }
+
+  private handleMouseMove(e: MouseEvent) {
+    if (!this.isDrawing || !this.ctx) return;
+
+    this.ctx.strokeStyle = this.currentColor;
+    this.ctx.lineWidth = this.currentThickness;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.lastX, this.lastY);
+    this.ctx.lineTo(e.clientX, e.clientY);
+    this.ctx.stroke();
+
+    this.lastX = e.clientX;
+    this.lastY = e.clientY;
+  }
+
+  private handleMouseUp() {
+    this.isDrawing = false;
+  }
+
+  private clearCanvas() {
+    if (!this.ctx || !this.canvas) return;
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    logger.info('DrawingManager', 'Canvas cleared');
+  }
+
+  private async saveDrawing() {
+    if (!this.canvas) {
+      logger.warn('DrawingManager', 'No canvas to save');
+      return;
+    }
+
+    try {
+      // Convert canvas to base64 PNG
+      const canvasData = this.canvas.toDataURL('image/png');
+
+      // Send to background script to save
+      chrome.runtime.sendMessage({
+        type: 'SAVE_DRAWING',
+        url: window.location.href,
+        canvasData,
+      }, (response) => {
+        if (response?.success) {
+          logger.info('DrawingManager', 'Drawing saved successfully');
+        } else {
+          logger.warn('DrawingManager', 'Failed to save drawing', response?.error);
+        }
+      });
+    } catch (error) {
+      logger.error('DrawingManager', 'Failed to save drawing', error as Error);
+    }
+  }
+
+  private async loadDrawing() {
+    if (!this.canvas || !this.ctx) {
+      logger.debug('DrawingManager', 'No canvas available for loading');
+      return;
+    }
+
+    try {
+      // Request drawing from background script
+      chrome.runtime.sendMessage({
+        type: 'GET_DRAWING',
+        url: window.location.href,
+      }, (response) => {
+        if (response?.drawing && this.ctx && this.canvas) {
+          // Load image from base64 data
+          const img = new Image();
+          img.onload = () => {
+            if (this.ctx && this.canvas) {
+              this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+              this.ctx.drawImage(img, 0, 0);
+              logger.info('DrawingManager', 'Drawing loaded successfully');
+            }
+          };
+          img.onerror = () => {
+            logger.error('DrawingManager', 'Failed to load drawing image');
+          };
+          img.src = response.drawing.canvasData;
+        }
+      });
+    } catch (error) {
+      logger.error('DrawingManager', 'Failed to load drawing', error as Error);
+    }
+  }
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    new AnnotationManager();
+    new DrawingManager();
+    initPubkyURLHandler();
+  });
+} else {
+  new AnnotationManager();
+  new DrawingManager();
+  initPubkyURLHandler();
 }

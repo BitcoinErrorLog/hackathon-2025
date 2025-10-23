@@ -8,7 +8,8 @@
     "activeTab",
     "tabs",
     "sidePanel",
-    "webNavigation"
+    "webNavigation",
+    "notifications"
   ],
   "host_permissions": [
     "http://*/*",
@@ -63,6 +64,13 @@
         "mac": "Alt+A"
       },
       "description": "Open Annotations tab in sidebar"
+    },
+    "toggle-drawing": {
+      "suggested_key": {
+        "default": "Alt+D",
+        "mac": "Alt+D"
+      },
+      "description": "Toggle drawing mode"
     }
   },
   "content_security_policy": {

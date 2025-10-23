@@ -3,6 +3,7 @@ import { authManagerSDK } from '../utils/auth-sdk';
 import { storage, Session, StoredBookmark } from '../utils/storage';
 import { pubkyAPISDK } from '../utils/pubky-api-sdk';
 import { logger } from '../utils/logger';
+import { DrawingSync } from '../utils/drawing-sync';
 import AuthView from './components/AuthView';
 import MainView from './components/MainView';
 import DebugPanel from './components/DebugPanel';
@@ -36,6 +37,13 @@ function App() {
         setCurrentUrl(tab.url);
         setCurrentTitle(tab.title || '');
         logger.debug('App', 'Current tab info', { url: tab.url, title: tab.title });
+      }
+
+      // Sync pending drawings to Pubky (if authenticated)
+      if (existingSession) {
+        DrawingSync.syncPendingDrawings().catch((error) => {
+          logger.warn('App', 'Failed to sync drawings in background', error);
+        });
       }
 
       setLoading(false);

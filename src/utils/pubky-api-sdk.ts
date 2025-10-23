@@ -353,6 +353,111 @@ class PubkyAPISDK {
   }
 
   /**
+   * Upload a file to the homeserver
+   */
+  async uploadFile(path: string, content: string, contentType: string = 'application/json'): Promise<string> {
+    try {
+      const session = await this.getAuthenticatedSession();
+      await this.ensurePubky();
+
+      const fullPath = `pubky://${session.pubky}${path}`;
+      logger.debug('PubkyAPISDK', 'Uploading file', { fullPath });
+
+      const response = await this.pubky.fetch(fullPath, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': contentType,
+        },
+        body: content,
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to upload file: HTTP ${response.status}`);
+      }
+
+      logger.info('PubkyAPISDK', 'File uploaded successfully', { path });
+      return fullPath;
+    } catch (error) {
+      logger.error('PubkyAPISDK', 'Failed to upload file', error as Error, { path });
+      throw error;
+    }
+  }
+
+  /**
+   * Get file content from a homeserver
+   */
+  async getFile(pubky: string, path: string): Promise<string> {
+    try {
+      await this.ensurePubky();
+      
+      const fullPath = `pubky://${pubky}${path}`;
+      logger.debug('PubkyAPISDK', 'Getting file', { fullPath });
+
+      const response = await this.pubky.fetch(fullPath);
+      const data = await response.text();
+      
+      logger.info('PubkyAPISDK', 'File retrieved successfully', { path });
+      return data;
+    } catch (error) {
+      logger.error('PubkyAPISDK', 'Failed to get file', error as Error, { pubky, path });
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a file from the homeserver
+   */
+  async deleteFile(path: string): Promise<void> {
+    try {
+      const session = await this.getAuthenticatedSession();
+      await this.ensurePubky();
+
+      const fullPath = `pubky://${session.pubky}${path}`;
+      logger.debug('PubkyAPISDK', 'Deleting file', { fullPath });
+
+      const response = await this.pubky.fetch(fullPath, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete file: HTTP ${response.status}`);
+      }
+
+      logger.info('PubkyAPISDK', 'File deleted successfully', { path });
+    } catch (error) {
+      logger.error('PubkyAPISDK', 'Failed to delete file', error as Error, { path });
+      throw error;
+    }
+  }
+
+  /**
+   * List files in a directory on own homeserver
+   */
+  async listFiles(pubky: string, path: string): Promise<any[]> {
+    try {
+      await this.ensurePubky();
+      
+      const fullPath = `pubky://${pubky}${path}`;
+      logger.debug('PubkyAPISDK', 'Listing files', { fullPath });
+
+      const entries = await this.pubky.list(fullPath, null, false, 100, false);
+      
+      const files = entries.map((entry: any) => ({
+        name: entry.split('/').pop() || entry,
+        path: entry,
+      }));
+      
+      logger.info('PubkyAPISDK', 'Files listed successfully', { path, count: files.length });
+      return files;
+    } catch (error) {
+      logger.error('PubkyAPISDK', 'Failed to list files', error as Error, { pubky, path });
+      throw error;
+    }
+  }
+
+  /**
    * Check if a post is deleted
    * Deleted posts have their content replaced with "[DELETED]"
    */

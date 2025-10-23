@@ -88,6 +88,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ success: true });
   }
 
+  if (message.type === 'SAVE_DRAWING') {
+    // Handle drawing save
+    handleSaveDrawing(message.url, message.canvasData)
+      .then((result) => {
+        sendResponse(result);
+      })
+      .catch((error) => {
+        logger.error('Background', 'Failed to save drawing', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Keep message channel open for async response
+  }
+
+  if (message.type === 'GET_DRAWING') {
+    // Handle drawing retrieval
+    handleGetDrawing(message.url)
+      .then((drawing) => {
+        sendResponse({ drawing });
+      })
+      .catch((error) => {
+        logger.error('Background', 'Failed to get drawing', error);
+        sendResponse({ drawing: null });
+      });
+    return true;
+  }
+
   return true; // Keep message channel open for async response
 });
 
@@ -250,6 +276,70 @@ async function handleGetAnnotations(url: string): Promise<Annotation[]> {
 }
 
 /**
+ * Handle drawing save
+ */
+async function handleSaveDrawing(url: string, canvasData: string): Promise<any> {
+  try {
+    logger.info('Background', 'Saving drawing', { url });
+
+    // Get current session
+    const session = await storage.getSession();
+    if (!session) {
+      logger.warn('Background', 'Not authenticated, saving drawing locally only');
+    }
+
+    // Create drawing object
+    const drawing = {
+      id: `drawing-${Date.now()}`,
+      url,
+      canvasData,
+      timestamp: Date.now(),
+      author: session?.pubky || '',
+    };
+
+    // Save drawing locally
+    await storage.saveDrawing(drawing);
+
+    logger.info('Background', 'Drawing saved locally', { url });
+
+    // Note: Syncing to Pubky will happen when popup opens and calls DrawingSync
+    return { 
+      success: true,
+      message: 'Drawing saved locally. Will sync to Pubky when you open the extension popup.'
+    };
+  } catch (error) {
+    logger.error('Background', 'Failed to save drawing', error as Error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Handle drawing retrieval
+ */
+async function handleGetDrawing(url: string): Promise<any> {
+  try {
+    logger.info('Background', 'Getting drawing for URL', { url });
+
+    // Get drawing from local storage
+    const drawing = await storage.getDrawing(url);
+
+    if (drawing) {
+      logger.info('Background', 'Drawing found', { url });
+      return drawing;
+    } else {
+      logger.debug('Background', 'No drawing found for URL', { url });
+      return null;
+    }
+  } catch (error) {
+    logger.error('Background', 'Failed to get drawing', error as Error);
+    return null;
+  }
+}
+
+/**
  * Open a Pubky profile in the profile renderer
  */
 function openPubkyProfile(url: string) {
@@ -327,6 +417,42 @@ chrome.commands.onCommand.addListener((command) => {
               windowId: tab.windowId 
             });
           }
+        });
+      }
+    });
+  }
+
+  if (command === 'toggle-drawing') {
+    // Toggle drawing mode on the current tab
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (tab?.id && tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('about:') && !tab.url.startsWith('chrome-extension://')) {
+        chrome.tabs.sendMessage(tab.id, {
+          type: 'TOGGLE_DRAWING_MODE',
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            logger.error('Background', 'Failed to toggle drawing mode - content script may not be ready', new Error(chrome.runtime.lastError.message));
+            // Try to notify user
+            chrome.notifications?.create({
+              type: 'basic',
+              iconUrl: 'icons/icon48.png',
+              title: 'Drawing Mode',
+              message: 'Please refresh the page to use drawing mode on this site.'
+            });
+          } else {
+            logger.info('Background', 'Drawing mode toggled via keyboard shortcut', { 
+              tabId: tab.id,
+              active: response?.active 
+            });
+          }
+        });
+      } else {
+        logger.warn('Background', 'Cannot use drawing mode on this page', { url: tab?.url });
+        chrome.notifications?.create({
+          type: 'basic',
+          iconUrl: 'icons/icon48.png',
+          title: 'Drawing Mode',
+          message: 'Drawing mode is not available on this page. Try a regular website.'
         });
       }
     });

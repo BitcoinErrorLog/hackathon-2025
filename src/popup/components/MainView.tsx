@@ -86,6 +86,39 @@ function MainView({
     setIsBookmarked(!isBookmarked);
   };
 
+  const handleDrawingToggle = async () => {
+    try {
+      // Get current tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab.id) {
+        logger.error('MainView', 'No active tab found');
+        alert('No active tab found');
+        return;
+      }
+
+      // Check if this is a valid page for content scripts
+      if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('about:') || tab.url.startsWith('chrome-extension://'))) {
+        alert('Drawing mode is not available on this page. Try a regular website.');
+        return;
+      }
+
+      // Send message to content script to toggle drawing mode
+      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_DRAWING_MODE' }, (response) => {
+        if (chrome.runtime.lastError) {
+          logger.error('MainView', 'Failed to toggle drawing mode', new Error(chrome.runtime.lastError.message));
+          alert('Please refresh the page first, then try activating drawing mode again.');
+        } else {
+          logger.info('MainView', 'Drawing mode toggled', { active: response?.active });
+          // Close popup so user can see the drawing canvas
+          window.close();
+        }
+      });
+    } catch (error) {
+      logger.error('MainView', 'Failed to toggle drawing mode', error as Error);
+      alert('Failed to activate drawing mode. Try refreshing the page.');
+    }
+  };
+
   const truncate = (str: string, maxLen: number) => {
     if (str.length <= maxLen) return str;
     return str.substring(0, maxLen) + '...';
@@ -151,6 +184,15 @@ function MainView({
           >
             <span className="mr-2">{isBookmarked ? '⭐' : '☆'}</span>
             {isBookmarked ? 'Bookmarked' : 'Bookmark Page'}
+          </button>
+
+          {/* Drawing Mode */}
+          <button
+            onClick={handleDrawingToggle}
+            className="w-full px-4 py-2 bg-pink-900/30 text-pink-400 hover:bg-pink-900/50 border border-pink-700/50 rounded-lg font-medium transition flex items-center justify-center text-sm"
+          >
+            <span className="mr-2">🎨</span>
+            Drawing Mode
           </button>
 
           {/* View Feed */}
